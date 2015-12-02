@@ -7,8 +7,8 @@ import os
 import png
 import itertools
 from pylab import *
-import matplotlib.pyplot as plt
-
+# import matplotlib.pyplot as plt
+# import vigra
 from PIL import Image
 from numpngw import write_png
 from image_quilting_helpers import verticalPathsCost
@@ -29,7 +29,9 @@ def mkPatches(img, patchSize):
 	This function takes in an img with size img.shape and a patch size patchSize, returns an array of shape
 	(patchSize, patchSize, #num of patches), so (:,:,idx) returns the idx'th patch
 	'''
-	#note that img should have channel axis, so (x,y,channel)
+	#check that img should have channel axis, so (x,y,channel)
+	assert img.ndim == 3, "image should have channel axis"
+
 	nX = img.shape[0] - patchSize
 	nY = img.shape[1] - patchSize
 	nChannels = img.shape[2]
@@ -37,8 +39,8 @@ def mkPatches(img, patchSize):
 
 	#iterate through all patches from img and store in patches
 	k = 0
-	for i in nX:
-		for j in nY:
+	for i in range(nX):
+		for j in range(nY):
 			x,X = i, i+patchSize
 			y,Y = j, j+patchSize
 			patches[:,:,:,k] = img[x:X,y:Y,:]
@@ -100,37 +102,43 @@ def mkTexture(textureSize, patches, overlap):
 	return texture
 
 if __name__ == "__main__":
-	img = Image.open("pebbles.png")
-	pixels = img.load()
-	#convert Image instance to numpy array for manipulation
-	img = np.array(pixels)
-	#print img.shape (88,100,3)
-	plt.imshow(img)
-	#img.save("pebbles_generate.png", "png")
+	# read in original image using Python Image Library (PIL)
+	orig_img = Image.open("pebbles.png")
+	print orig_img.mode, orig_img.size # mode = RGB, size = (88,100)
 
-	#load image
-	# fname = "pebbles.png"
-	# reader = png.Reader(fname)
-	# w,h,pixels,metadata = reader.read_flat() #or reader.read(), asDirect()
-	# output = open("pebbles_new", "wb")
-	# writer = png.Writer(w,h,**metadata)
-	# writer.write_array(output, pixels)
-	# output.close()
-	# img = np.vstack(itertools.imap(np.uint8, pixels))
-	#print img.shape - shape (88,300)
-	# print img[20,:]
-	# write_png("pebblesbles_generate.png", img)
+	# extract list of pixels in RGB/grayscale format
+	pixels = list(orig_img.getdata())
+	pixels_2d = np.array(pixels, np.int32)
+	pixels_2d = pixels_2d.reshape((88,-1,3))
 
+	sl = (slice(0,44), slice(0,50), slice(0,3))
+	patch = pixels_2d[sl[0], sl[1], sl[2]]
 
-	#patchSize = 30
-	# patches = mkPatches(img, 30)
+	textureSize = (100 * 2, 88 * 2)
 	
-	#textureSize = (300,150)
-	# img = mkTexture((300,150), patches, overlap=10)
 
-	#write out image to file
-	# outFname = os.path.splitext(fname)[0]+"_generated.png"
-	# write_png('pebbles_generate.png', img)
+	# img now is an np.ndarray with shape (88,100,3)
+	# img = np.reshape(img, (100,88,3), order='C')
+
+	# ensure that img is either an RGB or grayscale image
+	# assert img.ndim == 3 and (img.shape[2] == 3 or img.shape[2] == 1), img.shape
+
+	# patches has shape (30,30,3,4060 = 58*70) yay!!!
+	# patches = mkPatches(img, 30)
+	# img = mkTexture((88, 200), patches, overlap=10)
+	
+	# define textureSize to be whatever we want
+	# textureSize = (100, 88)
+
+	# pixels_out = np.reshape(img, (8800,3), order='C')
+	# pixels_out = map(lambda x: (x[0],x[1],x[2]), pixels_out)
+	# print pixels_out
+	# # print len(pixels_out)
+	# # print type(pixels_out)
+	# img_out = Image.new(orig_img.mode, textureSize)
+	# # print img.shape
+	# img_out.putdata(pixels_out)
+	# img_out.show()
 
 
 
@@ -143,4 +151,23 @@ if __name__ == "__main__":
 
 
 
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+	
 

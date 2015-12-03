@@ -11,8 +11,8 @@ import random
 from pylab import *
 from PIL import Image
 from numpngw import write_png
-from image_quilting_helpers import verticalPathsCost
-from image_quilting_helpers import calculateCost
+# from quilting_helpers import verticalPathsCost
+# from quilting_helpers import calculateCost
 
 def overlapDistances(refPatch, patches):
 	'''
@@ -23,7 +23,8 @@ def overlapDistances(refPatch, patches):
 	ov = patches[:, :refPatch.shape[0], :refPatch.shape[1], :]
 
 	# find distances of refPatch area of sample patches from refPatch itself
-	distances = ov - np.tile(refPatch, (4060,1,1,1))
+	numPatches = patches.shape[0]
+	distances = ov - np.tile(refPatch, (numPatches,1,1,1))
 
 	# calculate L2 norm and sum over all reference patch pixels
 	distances = np.sqrt(np.sum(np.square(distances), axis=3))
@@ -189,15 +190,20 @@ def cheapVertCut(costMap):
 	return path
 
 
+def cheapHorizCut(costMap):
+	path = cheapVertCut(costMap.T).T
+	return path
+
+
 if __name__ == "__main__":
 	# read in original image using Python Image Library (PIL)
-	orig_img = Image.open("pebbles.png")
-	# print orig_img.mode, orig_img.size # mode = RGB, size = (88,100)
+	orig_img = Image.open("basket.png")
+	(width, height) = orig_img.size
 
 	# extract list of pixels in RGB/grayscale format
 	pixels = list(orig_img.getdata())
 	sample_2d = np.array(pixels, np.int32)
-	sample_2d = sample_2d.reshape((88,-1,3))
+	sample_2d = sample_2d.reshape((height,-1,3))
 
 	# ensure that img is either an RGB or grayscale image
 	assert sample_2d.ndim == 3 and (sample_2d.shape[2] == 3 or sample_2d.shape[2] == 1), sample_2d.shape
@@ -209,7 +215,7 @@ if __name__ == "__main__":
 	initialPatch = sample_2d[sl[0], sl[1], sl[2]]
 
 	# define textureSize, tileSize and initialize blank canvas
-	textureSize = (100 * 2, 88 * 2)
+	textureSize = (width * 2, height * 2)
 	overlap = patchSize / 6
 	tileSize = patchSize - overlap
 	texture = np.zeros((textureSize[1], textureSize[0], 3), dtype=np.float32)
@@ -221,7 +227,7 @@ if __name__ == "__main__":
 	M = int(math.ceil(textureSize[1]/float(tileSize)))
 	k = -1
 
-	for i in range(1): # height M
+	for i in range(M): # height M
 		for j in range(N): # width N
 			k += 1
 			# insert default initial top-left patch
@@ -256,16 +262,39 @@ if __name__ == "__main__":
 			chosenPatch = patches[chosenIdx, :, :, :]
 
 			if blockLeft:
-				costMap = makeCostMap(refPatchLeft, chosenPatch[:, :overlap, :])
-				pathMask = cheapVertCut(costMap)
-				overlapLeft = np.where(np.dstack([pathMask] * 3), refPatchLeft, chosenPatch[:, :overlap, :])
+				costMap = makeCostMap(refPatchLeft, chosenPatch[:refPatchLeft.shape[0], :overlap, :])
+				pathMaskLeft = cheapVertCut(costMap)
+				overlapLeft = np.where(np.dstack([pathMaskLeft] * 3), refPatchLeft, chosenPatch[:refPatchLeft.shape[0], :overlap, :])
 				# overwrite with min cut
-				chosenPatch[:,:overlap,:] = overlapLeft
+				chosenPatch[:refPatchLeft.shape[0],:overlap,:] = overlapLeft
+
+			if blockUp:
+				# chosenSize = min(j*tileSize + patchSize, textureSize[0]) - j*tileSize
+				# TODO: stupid solution; find better one
+				costMap = makeCostMap(refPatchUp, chosenPatch[:overlap, :refPatchUp.shape[1], :])
+				pathMaskUp = cheapHorizCut(costMap)
+				overlapUp = np.where(np.dstack([pathMaskUp] * 3), refPatchUp, chosenPatch[:overlap, :refPatchUp.shape[1], :])
+				# overwrite with min cut
+				chosenPatch[:overlap,:refPatchUp.shape[1],:] = overlapUp
+
+			if blockLeft and blockUp:
+				pathMaskBoth = np.zeros((refPatchUp.shape[0], refPatchLeft.shape[1]))
+				for p in range(refPatchUp.shape[0]):
+					for q in range(refPatchLeft.shape[1]):
+						pathMaskBoth[p][q] = 1 - ((1-pathMaskUp[p][q]) * (1-pathMaskLeft[p][q]))
+						# pathMaskBoth[p][q] = pathMaskUp[p][q] | pathMaskLeft[p][q]
+
+				pathMaskLeft[:pathMaskBoth.shape[0],:] = pathMaskBoth
+				pathMaskUp[:,:pathMaskBoth.shape[1]] = pathMaskBoth
+
+				overlapBothLeft = np.where(np.dstack([pathMaskLeft] * 3), refPatchLeft, chosenPatch[:refPatchLeft.shape[0], :overlap, :])
+				overlapBothUp = np.where(np.dstack([pathMaskUp] * 3), refPatchUp, chosenPatch[:overlap, :refPatchUp.shape[1], :])
+				
+				# overwrite with min cut
+				chosenPatch[:refPatchLeft.shape[0],:overlap,:] = overlapBothLeft
+				chosenPatch[:overlap,:refPatchUp.shape[1],:] = overlapBothUp
 
 			insert(texture, chosenPatch, i*tileSize, j*tileSize)
-
-			
-			
 
 	# convert texture into flattened array pixels_out for exporting as PNG
 	pixels_out = np.reshape(texture, (textureSize[0] * textureSize[1], 3), order='C')

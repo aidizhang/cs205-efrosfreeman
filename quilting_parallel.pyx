@@ -1,6 +1,11 @@
 #!/usr/bin/python
 
-import numpy as np
+cimport numpy as np
+cimport cython
+from cython.parallel import parallel, prange
+from libc.math cimport sqrt
+from libc.stdint cimport uintptr_t
+
 import math
 import sys
 import os
@@ -28,7 +33,9 @@ def overlapDistances(refPatch, patches):
 
 	# calculate L2 norm and sum over all reference patch pixels
 	# TODO #1: parallelize
+	print distances
 	distances = np.sqrt(np.sum(np.square(distances), axis=3))
+	print distances
 	distances = np.sum(distances, axis=1)
 	distances = np.sum(distances, axis=1)
 	
@@ -228,6 +235,7 @@ if __name__ == "__main__":
 	M = int(math.ceil(textureSize[1]/float(tileSize)))
 	k = -1
 
+	# TODO #2 - brunt of parallelism
 	for i in range(M): # height M
 		for j in range(N): # width N
 			k += 1

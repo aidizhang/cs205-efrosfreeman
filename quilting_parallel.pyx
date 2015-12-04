@@ -1,6 +1,7 @@
 #cython: boundscheck=False, wraparound=False
 
 cimport numpy as np
+import numpy as np
 cimport cython
 from cython.parallel import parallel, prange
 from libc.math cimport sqrt
@@ -9,25 +10,28 @@ from libc.stdint cimport uintptr_t
 import math
 import sys
 import os
-import png
 import itertools
 import random
 
-from pylab import *
 from PIL import Image
-from numpngw import write_png
 
 # numpy types
 ctypedef np.float32_t FLOAT
+ctypedef np.uint32_t UINT
+ctypedef np.int32_t INT
 
 '''
 This function computes the distance of refPatch to all patches in patches, returning a 1D array of all distances.
 Returns 1-D array of distances over all patches.
 '''
 cpdef overlapDistances(FLOAT[:,:,:] refPatch,
-					   FLOAT[:,:,:,:] patches,
+					   INT[:,:,:,:] patches,
 					   FLOAT[:,:,:,:] distances,
 					   FLOAT[:] results):
+#cpdef overlapDistances(double[:,:,:] refPatch,
+#					   double[:,:,:,:] patches,
+#					   double[:,:,:,:] distances,
+#					   double[:] results):
 	cdef:
 		#TODO necessary?
 		int numPatches
@@ -36,16 +40,22 @@ cpdef overlapDistances(FLOAT[:,:,:] refPatch,
 	numPatches = patches.shape[0]
 
 	# calculate distances of refPatch from patches
-	print len(refPatch)
+	#print refPatch.shape
+
 	for i in range(numPatches):
-		distances[i,:,:,:] = patches[i,:len(refPatch),:len(refPatch[0]),:] - refPatch
+		for j in range(refPatch.shape[0]):
+			for k in range(refPatch.shape[1]):
+				for p in range(3): # num channels
+					distances[i,j,k,p] = patches[i,j,k,p] - refPatch[j,k,p]
+
+		#distances[i,:,:,:] = patches[i,:len(refPatch),:len(refPatch[0]),:] - refPatch
 
 	# calculate L2 norm and sum over all reference patch pixels
 	# TODO: parallelize distances = np.sqrt(np.sum(np.square(distances), axis=3))
 	for i in range(numPatches):
 		for j in range(refPatch.shape[0]):
 			for k in range(refPatch.shape[1]):
-				results[i] += distances[i,j,k,0]**2 + distances[i,j,k,1]**2 + distances[i,j,k,2]**2
+				results[i] += sqrt(distances[i,j,k,0]**2 + distances[i,j,k,1]**2 + distances[i,j,k,2]**2)
 
 
 #def overlapDistancesOld(refPatch, patches):
@@ -120,46 +130,46 @@ def getMatchingPatch(distances, thresholdFactor):
 	return idx
 
 
-def mkTexture(textureSize, patches, overlap):
-	'''
-	Main function
-	'''
-	patchSize = patches.shape[0]
-	nChannels = 3 # currently hardcoded
-	tileSize = patchSize - overlap
-	texture = np.zeros((textureSize[0], textureSize[1], nChannels), dtype=np.float32)
+#def mkTexture(textureSize, patches, overlap):
+#	'''
+#	Main function
+#	'''
+#	patchSize = patches.shape[0]
+#	nChannels = 3 # currently hardcoded
+#	tileSize = patchSize - overlap
+#	texture = np.zeros((textureSize[0], textureSize[1], nChannels), dtype=np.float32)
 
-	nPatches = patches.shape[2]
+#	nPatches = patches.shape[2]
 
-	k = -1
-	width, height = int(math.ceil(textureSize[0]/float(tileSize))), int(math.ceil(textureSize[0]/float(tileSize)))
-	for i in range(width):
-		for j in range(height):
-			k += 1
+#	k = -1
+#	width, height = int(math.ceil(textureSize[0]/float(tileSize))), int(math.ceil(textureSize[0]/float(tileSize)))
+#	for i in range(width):
+#		for j in range(height):
+#			k += 1
 
-			#use random patch as first patch
-			texture[0:patchSize, 0:patchSize, :] = patches[:,:,:,np.random.randint(0,nPatches)]
+#			#use random patch as first patch
+#			texture[0:patchSize, 0:patchSize, :] = patches[:,:,:,np.random.randint(0,nPatches)]
 
-			#slicing for left overlap
-			sl_l = (slice(i*tileSize, min(i*tileSize + patchSize, texture.shape[0])), 
-						slice(j*tileSize, min(j*tileSize + overlap, texture.shape[1])), slice(0, nChannels))
+#			#slicing for left overlap
+#			sl_l = (slice(i*tileSize, min(i*tileSize + patchSize, texture.shape[0])), 
+#						slice(j*tileSize, min(j*tileSize + overlap, texture.shape[1])), slice(0, nChannels))
 
-			#slicing for writing PATCH at position (i,j)
-			sl_patch = (slice(i*tileSize, min(i*tileSize + patchSize, texture.shape[0])), 
-						slice(j*tileSize, min(j*tileSize + patchSize, texture.shape[1])), slice(0, nChannels))
+#			#slicing for writing PATCH at position (i,j)
+#			sl_patch = (slice(i*tileSize, min(i*tileSize + patchSize, texture.shape[0])), 
+#						slice(j*tileSize, min(j*tileSize + patchSize, texture.shape[1])), slice(0, nChannels))
 
-			#finds minimum overlap, and finds minimum distance to available patches
-			ov1 = texture[sl_l[0], sl_l[1], :, np.newaxis]
-			d = patchDistance(ov1, patches)
+#			#finds minimum overlap, and finds minimum distance to available patches
+#			ov1 = texture[sl_l[0], sl_l[1], :, np.newaxis]
+#			d = patchDistance(ov1, patches)
 
-            #choose best possible matched patch
-			chosenPatchIndex = getMatchingPatch(d)
-			chosenPatch =  patches[sl_patch[0], sl_patch[1], :, chosenPatchIndex]
+#            #choose best possible matched patch
+#			chosenPatchIndex = getMatchingPatch(d)
+#			chosenPatch =  patches[sl_patch[0], sl_patch[1], :, chosenPatchIndex]
 
-			#paste chosenPatch at texture at position (i,j)
-			texture[sl_patch] = chosenPatch
+#			#paste chosenPatch at texture at position (i,j)
+#			texture[sl_patch] = chosenPatch
 
-	return texture
+#	return texture
 
 
 def insert(target, patch, i, j):

@@ -12,7 +12,7 @@ from quilting_parallel import *
 
 if __name__ == "__main__":
 	# read in original image using Python Image Library (PIL)
-	orig_img = Image.open("basket.png")
+	orig_img = Image.open("pebbles.png")
 	(width, height) = orig_img.size
 
 	# extract list of pixels in RGB/grayscale format
@@ -46,6 +46,7 @@ if __name__ == "__main__":
 	for i in range(M): # height M
 		for j in range(N): # width N
 			k += 1
+			print "\nOn iteration %i\n" % k
 			# insert default initial top-left patch
 			if k == 0:
 				insert(texture, initialPatch, i, j)
@@ -55,27 +56,28 @@ if __name__ == "__main__":
 			blockUp = i>0
 
 			# allocate memory for overlap, distances, and results
-			distances = np.empty_like(patches)
+			# TODO double???!?!?
+			distances = np.empty_like(patches, dtype=np.float32)
 
 			# find reference patchs and calculate overlap distances over all sample patches
 			if blockLeft:
 				refPatchLeft = texture[i*tileSize:min(i*tileSize + patchSize, textureSize[1]), 
 								j*tileSize:min(j*tileSize + overlap, textureSize[0]), :]
-				distLeft = np.zeros(patches.shape[0])
+				distLeft = np.zeros(patches.shape[0], dtype=np.float32)
 				overlapDistances(refPatchLeft, patches, distances, distLeft)
 				d = distLeft
 
 			if blockUp:
 				refPatchUp = texture[i*tileSize:min(i*tileSize + overlap, textureSize[1]), 
 								j*tileSize:min(j*tileSize + patchSize, textureSize[0]), :]
-				distUp = np.zeros(patches.shape[0])
+				distUp = np.zeros(patches.shape[0], dtype=np.float32)
 				overlapDistances(refPatchUp, patches, distances, distUp)
 				d = distUp
 
 			if blockLeft and blockUp:
 				refPatchBoth = texture[i*tileSize:min(i*tileSize + overlap, textureSize[1]), 
 								j*tileSize:min(j*tileSize + overlap, textureSize[0]), :]
-				distBoth = np.zeros(patches.shape[0])
+				distBoth = np.zeros(patches.shape[0], dtype=np.float32)
 				overlapDistances(refPatchBoth, patches, distances, distBoth)
 				d = distLeft + distUp - distBoth
 
@@ -124,4 +126,4 @@ if __name__ == "__main__":
 	img_out = Image.new(orig_img.mode, textureSize)
 	img_out.putdata(pixels_out)
 	img_out.show()
-
+	print "donedonedone!\n"

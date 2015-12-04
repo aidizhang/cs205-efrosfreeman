@@ -20,67 +20,63 @@ from numpngw import write_png
 # numpy types
 ctypedef np.float32_t FLOAT
 
-cpdef overlapDistances(FLOAT[:,:,:] refPatch, FLOAT[:,:,:,;] patches):
-	'''
-	This function computes the distance of refPatch to all patches in patches, returning a 1D array of all distances.
-	Returns 1-D array of distances over all patches.
-	'''
+'''
+This function computes the distance of refPatch to all patches in patches, returning a 1D array of all distances.
+Returns 1-D array of distances over all patches.
+'''
+cpdef overlapDistances(FLOAT[:,:,:] refPatch,
+					   FLOAT[:,:,:,:] patches,
+					   FLOAT[:,:,:,:] distances,
+					   FLOAT[:] results):
 	cdef:
-		FLOAT[:,:,:,:] ov
-		FLOAT[:,:,:,:] distances
-		FLOAT[] results
+		#TODO necessary?
 		int numPatches
-
-	# find refPatch area of each sample patch
-	ov = patches[:,:refPatch.shape[0],:refPatch.shape[1],:]
 
 	# find distances of refPatch area of sample patches from refPatch itself
 	numPatches = patches.shape[0]
 
 	# calculate distances of refPatch from patches
+	print len(refPatch)
 	for i in range(numPatches):
-		distances[i,:,:,:] = ov[i,:,:,:] - refPatch
+		distances[i,:,:,:] = patches[i,:len(refPatch),:len(refPatch[0]),:] - refPatch
 
 	# calculate L2 norm and sum over all reference patch pixels
 	# TODO: parallelize distances = np.sqrt(np.sum(np.square(distances), axis=3))
 	for i in range(numPatches):
-		results[i] = 0
 		for j in range(refPatch.shape[0]):
 			for k in range(refPatch.shape[1]):
 				results[i] += distances[i,j,k,0]**2 + distances[i,j,k,1]**2 + distances[i,j,k,2]**2
 
-	return results
 
+#def overlapDistancesOld(refPatch, patches):
+#	'''
+#	This function computes the distance of refPatch to all patches in patches, returning a 1D array of all distances.
+#	Returns 1-D array of distances over all patches.
+#	'''
+#	# find refPatch area of each sample patch
+#	ov = patches[:, :refPatch.shape[0], :refPatch.shape[1], :]
 
-def overlapDistancesOld(refPatch, patches):
-	'''
-	This function computes the distance of refPatch to all patches in patches, returning a 1D array of all distances.
-	Returns 1-D array of distances over all patches.
-	'''
-	# find refPatch area of each sample patch
-	ov = patches[:, :refPatch.shape[0], :refPatch.shape[1], :]
+#	# find distances of refPatch area of sample patches from refPatch itself
+#	numPatches = patches.shape[0]
 
-	# find distances of refPatch area of sample patches from refPatch itself
-	numPatches = patches.shape[0]
+#	# paralellize ov - refs
+#	distances = np.zeros(ov.shape)
+#	for i in range(numPatches):
+#		distances[i,:,:,:] = ov[i,:,:,:] - refPatch
 
-	# paralellize ov - refs
-	distances = np.zeros(ov.shape)
-	for i in range(numPatches):
-		distances[i,:,:,:] = ov[i,:,:,:] - refPatch
+#	# calculate L2 norm and sum over all reference patch pixels
+#	# parallelize distances = np.sqrt(np.sum(np.square(distances), axis=3))
+#	for i in range(numPatches):
+#		for j in range(refPatch.shape[0]):
+#			for k in range(refPatch.shape[1]):
+#				distances[i,j,k,0]**2 + distances[i,j,k,1]**2 + distances # ...
 
-	# calculate L2 norm and sum over all reference patch pixels
-	# parallelize distances = np.sqrt(np.sum(np.square(distances), axis=3))
-	for i in range(numPatches):
-		for j in range(refPatch.shape[0]):
-			for k in range(refPatch.shape[1]):
-				distances[i,j,k,0]**2 + distances[i,j,k,1]**2 + distances # ...
+#		distances[i,:,:,:] = 
 
-		distances[i,:,:,:] = 
-
-	distances = np.sum(distances, axis=1)
-	distances = np.sum(distances, axis=1)
+#	distances = np.sum(distances, axis=1)
+#	distances = np.sum(distances, axis=1)
 	
-	return distances
+#	return distances
 
 
 def makePatches(img, patchSize):

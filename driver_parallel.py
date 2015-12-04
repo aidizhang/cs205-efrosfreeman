@@ -54,23 +54,29 @@ if __name__ == "__main__":
 			blockLeft = j>0
 			blockUp = i>0
 
+			# allocate memory for overlap, distances, and results
+			distances = np.empty_like(patches)
+
 			# find reference patchs and calculate overlap distances over all sample patches
 			if blockLeft:
 				refPatchLeft = texture[i*tileSize:min(i*tileSize + patchSize, textureSize[1]), 
 								j*tileSize:min(j*tileSize + overlap, textureSize[0]), :]
-				distLeft = overlapDistances(refPatchLeft, patches)
+				distLeft = np.zeros(patches.shape[0])
+				overlapDistances(refPatchLeft, patches, distances, distLeft)
 				d = distLeft
 
 			if blockUp:
 				refPatchUp = texture[i*tileSize:min(i*tileSize + overlap, textureSize[1]), 
 								j*tileSize:min(j*tileSize + patchSize, textureSize[0]), :]
-				distUp = overlapDistances(refPatchUp, patches)
+				distUp = np.zeros(patches.shape[0])
+				overlapDistances(refPatchUp, patches, distances, distUp)
 				d = distUp
 
 			if blockLeft and blockUp:
 				refPatchBoth = texture[i*tileSize:min(i*tileSize + overlap, textureSize[1]), 
 								j*tileSize:min(j*tileSize + overlap, textureSize[0]), :]
-				distBoth = overlapDistances(refPatchBoth, patches)
+				distBoth = np.zeros(patches.shape[0])
+				overlapDistances(refPatchBoth, patches, distances, distBoth)
 				d = distLeft + distUp - distBoth
 
 			# finds appropriate random patch

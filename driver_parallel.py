@@ -8,7 +8,7 @@ pyximport.install()
 import numpy as np
 from PIL import Image
 
-from quilting_parallel import * 
+from quilting_parallel import *
 
 if __name__ == "__main__":
 	# read in original image using Python Image Library (PIL)

@@ -12,7 +12,7 @@ from quilting_parallel import *
 
 if __name__ == "__main__":
 	# read in original image using Python Image Library (PIL)
-	orig_img = Image.open("pebbles.png")
+	orig_img = Image.open("basket.png")
 	(width, height) = orig_img.size
 
 	# extract list of pixels in RGB/grayscale format

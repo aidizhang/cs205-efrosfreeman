@@ -12,7 +12,7 @@ from quilting_parallel import *
 
 if __name__ == "__main__":
 	# read in original image using Python Image Library (PIL)
-	orig_img = Image.open("basket.png")
+	orig_img = Image.open("pebbles.png")
 	(width, height) = orig_img.size
 
 	# extract list of pixels in RGB/grayscale format
@@ -42,11 +42,12 @@ if __name__ == "__main__":
 	M = int(math.ceil(textureSize[1]/float(tileSize)))
 	k = -1
 
-	# TODO #2 - brunt of parallelism
+	# TODO #2 - brunt of parallelism, use condition variables
 	for i in range(M): # height M
 		for j in range(N): # width N
 			k += 1
-			print "\nOn iteration %i\n" % k
+			# TODO counter
+			print "On iteration %i" % k
 			# insert default initial top-left patch
 			if k == 0:
 				insert(texture, initialPatch, i, j)
@@ -56,9 +57,8 @@ if __name__ == "__main__":
 			blockUp = i>0
 
 			# allocate memory for overlap, distances, and results
-			# TODO double???!?!?
+			# TODO double?
 			distances = np.empty_like(patches, dtype=np.float32)
-
 			# find reference patchs and calculate overlap distances over all sample patches
 			if blockLeft:
 				refPatchLeft = texture[i*tileSize:min(i*tileSize + patchSize, textureSize[1]), 

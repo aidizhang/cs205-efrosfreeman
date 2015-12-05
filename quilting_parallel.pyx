@@ -16,6 +16,7 @@ import random
 from PIL import Image
 
 # numpy types
+# TODO need all?
 ctypedef np.float32_t FLOAT
 ctypedef np.uint32_t UINT
 ctypedef np.int32_t INT
@@ -24,68 +25,28 @@ ctypedef np.int32_t INT
 This function computes the distance of refPatch to all patches in patches, returning a 1D array of all distances.
 Returns 1-D array of distances over all patches.
 '''
+#TODO should make contiguous?
 cpdef overlapDistances(FLOAT[:,:,:] refPatch,
 					   INT[:,:,:,:] patches,
 					   FLOAT[:,:,:,:] distances,
 					   FLOAT[:] results):
-#cpdef overlapDistances(double[:,:,:] refPatch,
-#					   double[:,:,:,:] patches,
-#					   double[:,:,:,:] distances,
-#					   double[:] results):
 	cdef:
-		#TODO necessary?
-		int numPatches
-
-	# find distances of refPatch area of sample patches from refPatch itself
-	numPatches = patches.shape[0]
-
+		int numPatches = patches.shape[0]
+		int i, j, k, p
+	
+	# calculate distances of refPatch from patches
 	with nogil:
-		# calculate distances of refPatch from patches
 		for i in prange(numPatches, num_threads=8, schedule='dynamic'):
 			for j in range(refPatch.shape[0]):
 				for k in range(refPatch.shape[1]):
 					for p in range(3): # num channels
 						distances[i,j,k,p] = patches[i,j,k,p] - refPatch[j,k,p]
 
-			#distances[i,:,:,:] = patches[i,:len(refPatch),:len(refPatch[0]),:] - refPatch
-
-		# calculate L2 norm and sum over all reference patch pixels
-		# TODO: parallelize distances = np.sqrt(np.sum(np.square(distances), axis=3))
+		#calculate L2 norm and sum over all reference patch pixels
 		for i in prange(numPatches, num_threads=8, schedule='dynamic'):
 			for j in range(refPatch.shape[0]):
 				for k in range(refPatch.shape[1]):
 					results[i] += sqrt(distances[i,j,k,0]**2 + distances[i,j,k,1]**2 + distances[i,j,k,2]**2)
-
-
-#def overlapDistancesOld(refPatch, patches):
-#	'''
-#	This function computes the distance of refPatch to all patches in patches, returning a 1D array of all distances.
-#	Returns 1-D array of distances over all patches.
-#	'''
-#	# find refPatch area of each sample patch
-#	ov = patches[:, :refPatch.shape[0], :refPatch.shape[1], :]
-
-#	# find distances of refPatch area of sample patches from refPatch itself
-#	numPatches = patches.shape[0]
-
-#	# paralellize ov - refs
-#	distances = np.zeros(ov.shape)
-#	for i in range(numPatches):
-#		distances[i,:,:,:] = ov[i,:,:,:] - refPatch
-
-#	# calculate L2 norm and sum over all reference patch pixels
-#	# parallelize distances = np.sqrt(np.sum(np.square(distances), axis=3))
-#	for i in range(numPatches):
-#		for j in range(refPatch.shape[0]):
-#			for k in range(refPatch.shape[1]):
-#				distances[i,j,k,0]**2 + distances[i,j,k,1]**2 + distances # ...
-
-#		distances[i,:,:,:] = 
-
-#	distances = np.sum(distances, axis=1)
-#	distances = np.sum(distances, axis=1)
-	
-#	return distances
 
 
 def makePatches(img, patchSize):
@@ -129,48 +90,6 @@ def getMatchingPatch(distances, thresholdFactor):
 	return idx
 
 
-#def mkTexture(textureSize, patches, overlap):
-#	'''
-#	Main function
-#	'''
-#	patchSize = patches.shape[0]
-#	nChannels = 3 # currently hardcoded
-#	tileSize = patchSize - overlap
-#	texture = np.zeros((textureSize[0], textureSize[1], nChannels), dtype=np.float32)
-
-#	nPatches = patches.shape[2]
-
-#	k = -1
-#	width, height = int(math.ceil(textureSize[0]/float(tileSize))), int(math.ceil(textureSize[0]/float(tileSize)))
-#	for i in range(width):
-#		for j in range(height):
-#			k += 1
-
-#			#use random patch as first patch
-#			texture[0:patchSize, 0:patchSize, :] = patches[:,:,:,np.random.randint(0,nPatches)]
-
-#			#slicing for left overlap
-#			sl_l = (slice(i*tileSize, min(i*tileSize + patchSize, texture.shape[0])), 
-#						slice(j*tileSize, min(j*tileSize + overlap, texture.shape[1])), slice(0, nChannels))
-
-#			#slicing for writing PATCH at position (i,j)
-#			sl_patch = (slice(i*tileSize, min(i*tileSize + patchSize, texture.shape[0])), 
-#						slice(j*tileSize, min(j*tileSize + patchSize, texture.shape[1])), slice(0, nChannels))
-
-#			#finds minimum overlap, and finds minimum distance to available patches
-#			ov1 = texture[sl_l[0], sl_l[1], :, np.newaxis]
-#			d = patchDistance(ov1, patches)
-
-#            #choose best possible matched patch
-#			chosenPatchIndex = getMatchingPatch(d)
-#			chosenPatch =  patches[sl_patch[0], sl_patch[1], :, chosenPatchIndex]
-
-#			#paste chosenPatch at texture at position (i,j)
-#			texture[sl_patch] = chosenPatch
-
-#	return texture
-
-
 def insert(target, patch, i, j):
 	'''
 	This function inserts a patch into img at position (i,j).
@@ -186,6 +105,7 @@ def makeCostMap(img1, img2):
 	This function takes in 2 overlapping image regions, computes pixel-wise L2 norm and returns cost map.
 	'''
 	return np.sqrt(np.sum(np.square(img1-img2), axis=2))
+
 
 def calcMinCosts(costMap):
 	'''
@@ -209,6 +129,7 @@ def calcMinCosts(costMap):
 
 	return cumuCosts
 
+
 def pathBacktrace(cumuCosts):
 	'''
 	trace DP shit backwards, yo
@@ -228,10 +149,12 @@ def pathBacktrace(cumuCosts):
 
 	return pathCosts
 
+
 def cheapVertPath(costMap):
 	costs = calcMinCosts(costMap)
 	path = pathBacktrace(costs)
 	return path
+
 
 def cheapVertCut(costMap):
 	'''

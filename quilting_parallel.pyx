@@ -39,23 +39,22 @@ cpdef overlapDistances(FLOAT[:,:,:] refPatch,
 	# find distances of refPatch area of sample patches from refPatch itself
 	numPatches = patches.shape[0]
 
-	# calculate distances of refPatch from patches
-	#print refPatch.shape
+	with nogil:
+		# calculate distances of refPatch from patches
+		for i in prange(numPatches, num_threads=8, schedule='dynamic'):
+			for j in range(refPatch.shape[0]):
+				for k in range(refPatch.shape[1]):
+					for p in range(3): # num channels
+						distances[i,j,k,p] = patches[i,j,k,p] - refPatch[j,k,p]
 
-	for i in range(numPatches):
-		for j in range(refPatch.shape[0]):
-			for k in range(refPatch.shape[1]):
-				for p in range(3): # num channels
-					distances[i,j,k,p] = patches[i,j,k,p] - refPatch[j,k,p]
+			#distances[i,:,:,:] = patches[i,:len(refPatch),:len(refPatch[0]),:] - refPatch
 
-		#distances[i,:,:,:] = patches[i,:len(refPatch),:len(refPatch[0]),:] - refPatch
-
-	# calculate L2 norm and sum over all reference patch pixels
-	# TODO: parallelize distances = np.sqrt(np.sum(np.square(distances), axis=3))
-	for i in range(numPatches):
-		for j in range(refPatch.shape[0]):
-			for k in range(refPatch.shape[1]):
-				results[i] += sqrt(distances[i,j,k,0]**2 + distances[i,j,k,1]**2 + distances[i,j,k,2]**2)
+		# calculate L2 norm and sum over all reference patch pixels
+		# TODO: parallelize distances = np.sqrt(np.sum(np.square(distances), axis=3))
+		for i in prange(numPatches, num_threads=8, schedule='dynamic'):
+			for j in range(refPatch.shape[0]):
+				for k in range(refPatch.shape[1]):
+					results[i] += sqrt(distances[i,j,k,0]**2 + distances[i,j,k,1]**2 + distances[i,j,k,2]**2)
 
 
 #def overlapDistancesOld(refPatch, patches):

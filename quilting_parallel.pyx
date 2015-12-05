@@ -35,6 +35,7 @@ cpdef overlapDistances(FLOAT[:,:,:] refPatch,
 		int i, j, k, p
 	
 	# calculate distances of refPatch from patches
+	# TODO: try load balancing with chunksize
 	with nogil:
 		for i in prange(numPatches, num_threads=8, schedule='dynamic'):
 			for j in range(refPatch.shape[0]):
@@ -49,7 +50,8 @@ cpdef overlapDistances(FLOAT[:,:,:] refPatch,
 					results[i] += sqrt(distances[i,j,k,0]**2 + distances[i,j,k,1]**2 + distances[i,j,k,2]**2)
 
 
-def makePatches(img, patchSize):
+# TODO cythonize all helper functions
+cdef makePatches(img, patchSize):
 	'''
 	This function takes in an img with size img.shape and a patch size patchSize, returns an array of shape
 	(patchSize, patchSize, #num of patches), so (:,:,idx) returns the idx'th patch
@@ -74,7 +76,7 @@ def makePatches(img, patchSize):
 	return patches
 
 
-def getMatchingPatch(distances, thresholdFactor):
+cdef getMatchingPatch(distances, thresholdFactor):
 	'''
 	Given a 1-D array of patch distances, choose matching patch index that is within threshold.
 	'''
@@ -90,7 +92,7 @@ def getMatchingPatch(distances, thresholdFactor):
 	return idx
 
 
-def insert(target, patch, i, j):
+cdef insert(target, patch, i, j):
 	'''
 	This function inserts a patch into img at position (i,j).
 	'''
@@ -100,14 +102,14 @@ def insert(target, patch, i, j):
 	target[i:min(i+patchSize, target.shape[0]), j:min(j+patchSize, target.shape[1]), :] = patch[:patchV, :patchH, :]
 
 
-def makeCostMap(img1, img2):
+cdef makeCostMap(img1, img2):
 	'''
 	This function takes in 2 overlapping image regions, computes pixel-wise L2 norm and returns cost map.
 	'''
 	return np.sqrt(np.sum(np.square(img1-img2), axis=2))
 
 
-def calcMinCosts(costMap):
+cdef calcMinCosts(costMap):
 	'''
 	DP this shit, yo
 	'''
@@ -130,7 +132,7 @@ def calcMinCosts(costMap):
 	return cumuCosts
 
 
-def pathBacktrace(cumuCosts):
+cdef pathBacktrace(cumuCosts):
 	'''
 	trace DP shit backwards, yo
 	'''
@@ -150,13 +152,13 @@ def pathBacktrace(cumuCosts):
 	return pathCosts
 
 
-def cheapVertPath(costMap):
+cdef cheapVertPath(costMap):
 	costs = calcMinCosts(costMap)
 	path = pathBacktrace(costs)
 	return path
 
 
-def cheapVertCut(costMap):
+cdef cheapVertCut(costMap):
 	'''
 	Generate binary mask
 	'''
@@ -167,7 +169,7 @@ def cheapVertCut(costMap):
 	return path
 
 
-def cheapHorizCut(costMap):
+cdef cheapHorizCut(costMap):
 	path = cheapVertCut(costMap.T).T
 	return path
 

@@ -25,7 +25,7 @@ ctypedef np.int32_t INT
 This function computes the distance of refPatch to all patches in patches, returning a 1D array of all distances.
 Returns 1-D array of distances over all patches.
 '''
-#TODO should make contiguous?
+# TODO: should make contiguous?
 cpdef overlapDistances(FLOAT[:,:,:] refPatch,
 					   INT[:,:,:,:] patches,
 					   FLOAT[:,:,:,:] distances,
@@ -50,13 +50,101 @@ cpdef overlapDistances(FLOAT[:,:,:] refPatch,
 					results[i] += sqrt(distances[i,j,k,0]**2 + distances[i,j,k,1]**2 + distances[i,j,k,2]**2)
 
 
-# TODO cythonize all helper functions
-cdef makePatches(img, patchSize):
+cdef pastePatches(int textureSize, int tileSize, int overlap, int numRows, int numCols, int tid,
+				  INT[:,:,:,:] patches, INT[:,:,:] initialPatch):
+	# TODO: necessary?
+	cdef:
+		int k = -1
+		int i, j, rowNo, colNo
+		bool blockLeft, blockUp
+
+	rowNo = tid / numCols
+	colNo  = tid % numCols
+	print "On iteration %i" % tid
+
+	with nogil:
+		# insert default initial top-left patch
+		if k == 0:
+			insert(texture, initialPatch, rowNo, colNo)
+			continue
+
+		blockLeft = colNo>0
+		blockUp = rowNo>0
+
+		# allocate memory for overlap, distances, and results
+		# TODO: double?
+		distances = np.empty_like(patches, dtype=np.float32)
+		
+		# find reference patchs and calculate overlap distances over all sample patches
+		if blockLeft:
+			refPatchLeft = texture[rowNo*tileSize:min(rowNo*tileSize + patchSize, textureSize[1]), 
+							colNo*tileSize:min(colNo*tileSize + overlap, textureSize[0]), :]
+			distLeft = np.zeros(patches.shape[0], dtype=np.float32)
+			overlapDistances(refPatchLeft, patches, distances, distLeft)
+			d = distLeft
+
+		if blockUp:
+			refPatchUp = texture[rowNo*tileSize:min(rowNo*tileSize + overlap, textureSize[1]), 
+							colNo*tileSize:min(colNo*tileSize + patchSize, textureSize[0]), :]
+			distUp = np.zeros(patches.shape[0], dtype=np.float32)
+			overlapDistances(refPatchUp, patches, distances, distUp)
+			d = distUp
+
+		if blockLeft and blockUp:
+			refPatchBoth = texture[rowNo*tileSize:min(rowNo*tileSize + overlap, textureSize[1]), 
+							colNo*tileSize:min(colNo*tileSize + overlap, textureSize[0]), :]
+			distBoth = np.zeros(patches.shape[0], dtype=np.float32)
+			overlapDistances(refPatchBoth, patches, distances, distBoth)
+			d = distLeft + distUp - distBoth
+
+		# finds appropriate random patch
+		chosenIdx = getMatchingPatch(d, 1.1)
+		chosenPatch = patches[chosenIdx, :, :, :]
+
+		# determines minimum cut boundary and overlays onto chosen patch
+		if blockLeft:
+			costMap = makeCostMap(refPatchLeft, chosenPatch[:refPatchLeft.shape[0], :overlap, :])
+			pathMaskLeft = cheapVertCut(costMap)
+			overlapLeft = np.where(np.dstack([pathMaskLeft] * 3), refPatchLeft, chosenPatch[:refPatchLeft.shape[0], :overlap, :])
+			# overwrite with min cut
+			chosenPatch[:refPatchLeft.shape[0],:overlap,:] = overlapLeft
+
+		if blockUp:
+			# chosenSize = min(colNo*tileSize + patchSize, textureSize[0]) - colNo*tileSize
+			# TODO: stupid solution; find better one
+			costMap = makeCostMap(refPatchUp, chosenPatch[:overlap, :refPatchUp.shape[1], :])
+			pathMaskUp = cheapHorizCut(costMap)
+			overlapUp = np.where(np.dstack([pathMaskUp] * 3), refPatchUp, chosenPatch[:overlap, :refPatchUp.shape[1], :])
+			# overwrite with min cut
+			chosenPatch[:overlap,:refPatchUp.shape[1],:] = overlapUp
+
+		if blockLeft and blockUp:
+			pathMaskBoth = np.zeros((refPatchUp.shape[0], refPatchLeft.shape[1]))
+			for i in range(refPatchUp.shape[0]):
+				for j in range(refPatchLeft.shape[1]):
+					# bitwise or operation
+					pathMaskBoth[i][j] = 1 - ((1-pathMaskUp[i][j]) * (1-pathMaskLeft[i][j]))
+
+			pathMaskLeft[:pathMaskBoth.shape[0],:] = pathMaskBoth
+			pathMaskUp[:,:pathMaskBoth.shape[1]] = pathMaskBoth
+
+			overlapBothLeft = np.where(np.dstack([pathMaskLeft] * 3), refPatchLeft, chosenPatch[:refPatchLeft.shape[0], :overlap, :])
+			overlapBothUp = np.where(np.dstack([pathMaskUp] * 3), refPatchUp, chosenPatch[:overlap, :refPatchUp.shape[1], :])
+			
+			# overwrite with min cut
+			chosenPatch[:refPatchLeft.shape[0],:overlap,:] = overlapBothLeft
+			chosenPatch[:overlap,:refPatchUp.shape[1],:] = overlapBothUp
+
+		insert(texture, chosenPatch, rowNo*tileSize, colNo*tileSize)
+
+# TODO: cythonize all helper functions
+def makePatches(img, patchSize):
 	'''
 	This function takes in an img with size img.shape and a patch size patchSize, returns an array of shape
 	(patchSize, patchSize, #num of patches), so (:,:,idx) returns the idx'th patch
 	'''
-	#check that img should have channel axis, so (x,y,channel)
+
+	# check that img should have channel axis, so (x,y,channel)
 	assert img.ndim == 3, "image should have channel axis"
 
 	nX = img.shape[0] - patchSize

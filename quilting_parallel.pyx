@@ -23,7 +23,7 @@ ctypedef np.uint32_t UINT
 ctypedef np.int32_t INT
 
 
-cdef pastePatches(int textureSize, int tileSize, int overlap, int numRows, int numCols, int tid,
+cdef void pastePatch(int textureSize, int tileSize, int overlap, int numRows, int numCols, int tid,
 				  INT[:,:,:,:] patches, INT[:,:,:] initialPatch):
 	# TODO: necessary?
 	cdef:
@@ -34,12 +34,13 @@ cdef pastePatches(int textureSize, int tileSize, int overlap, int numRows, int n
 		# int refPatchUpY = refPatchUp.shape[0]
 		# int refPatchBothX = refPatchBoth.shape[1]
 		# int refPatchBothy = refPatchBoth.shape[0]
-		bool blockLeft, blockUp
+		int blockLeft, blockUp
 
 	rowNo = tid / numCols
 	colNo  = tid % numCols
 	print "On iteration %i" % tid
 
+	# TODO: should entire function be nogil since we're doing some work here?
 	# declaring distance arrays
 	distLeft = np.zeros(patches.shape[0], dtype=np.float32)
 	distUp = np.zeros(patches.shape[0], dtype=np.float32)
@@ -54,25 +55,25 @@ cdef pastePatches(int textureSize, int tileSize, int overlap, int numRows, int n
 		FLOAT[:,:] costMap, pathMaskLeft, pathMaskUp, pathMaskBoth
 
 	with nogil:
-		blockLeft = colNo>0
-		blockUp = rowNo>0
+		blockLeft = 1 if colNo>0 else 0
+		blockUp = 1 if rowNo>0 else 0
 		
 		# find reference patchs and calculate overlap distances over all sample patches
 		if blockLeft:
-			refPatchLeft = texture[rowNo*tileSize:min(rowNo*tileSize + patchSize, textureSize[1]), 
-							colNo*tileSize:min(colNo*tileSize + overlap, textureSize[0]), :]
+			refPatchLeft = texture[rowNo*tileSize:int_min(rowNo*tileSize + patchSize, textureSize[1]), 
+							colNo*tileSize:int_min(colNo*tileSize + overlap, textureSize[0]), :]
 			overlapDistances(refPatchLeft, patches, distances, distLeft)
 			d = distLeft
 
 		if blockUp:
-			refPatchUp = texture[rowNo*tileSize:min(rowNo*tileSize + overlap, textureSize[1]), 
-							colNo*tileSize:min(colNo*tileSize + patchSize, textureSize[0]), :]
+			refPatchUp = texture[rowNo*tileSize:int_min(rowNo*tileSize + overlap, textureSize[1]), 
+							colNo*tileSize:int_min(colNo*tileSize + patchSize, textureSize[0]), :]
 			overlapDistances(refPatchUp, patches, distances, distUp)
 			d = distUp
 
 		if blockLeft and blockUp:
-			refPatchBoth = texture[rowNo*tileSize:min(rowNo*tileSize + overlap, textureSize[1]), 
-							colNo*tileS           ize:min(colNo*tileSize + overlap, textureSize[0]), :]
+			refPatchBoth = texture[rowNo*tileSize:int_min(rowNo*tileSize + overlap, textureSize[1]), 
+							colNo*tileSize:int_min(colNo*tileSize + overlap, textureSize[0]), :]
 			overlapDistances(refPatchBoth, patches, distances, distBoth)
 			d = distLeft + distUp - distBoth
 
@@ -121,13 +122,15 @@ cdef pastePatches(int textureSize, int tileSize, int overlap, int numRows, int n
 
 		insert(texture, chosenPatch, rowNo*tileSize, colNo*tileSize)
 
+cdef inline int int_min(int a, int b) nogil: 
+	return a if a <= b else b
 
 '''
 This function computes the distance of refPatch to all patches in patches, returning a 1D array of all distances.
 Returns 1-D array of distances over all patches.
 '''
 # TODO: should make contiguous?
-cdef overlapDistances(FLOAT[:,:,:] refPatch,
+cdef void overlapDistances(FLOAT[:,:,:] refPatch,
 					   INT[:,:,:,:] patches,
 					   FLOAT[:,:,:,:] distances,
 					   FLOAT[:] results) nogil:
@@ -150,14 +153,14 @@ cdef overlapDistances(FLOAT[:,:,:] refPatch,
 				results[i] += sqrt(distances[i,j,k,0]**2 + distances[i,j,k,1]**2 + distances[i,j,k,2]**2)
 
 
-cdef combineRefAndChosen(FLOAT[:,:] pathMask, 
+cdef FLOAT* combineRefAndChosen(FLOAT[:,:] pathMask, 
 						FLOAT[:,:,:] refPatch, 
 						FLOAT[:,:,:] chosenPatch, 
-						int dir, 
+						int dir,
 						int overlap) nogil:
 	cdef:
 		# TODO: do we want this function to return or be void???
-		FLOAT[:,:,:] overlap = refPatch
+		FLOAT[:,:,:] mixedPatch = refPatch
 
 	# dir: 0 for left, 1 for up
 	# overlapLeft = np.where(np.dstack([pathMaskLeft] * 3), refPatchLeft, chosenPatch[:refPatchLeft.shape[0], :overlap, :])
@@ -166,19 +169,19 @@ cdef combineRefAndChosen(FLOAT[:,:] pathMask,
 			for j in range(overlap):
 				# use refPatch if 1; chosenPatch if 0
 				if pathMask[i][j] == 1:
-					overlap[i][j] = refPatch[i][j]
+					mixedPatch[i][j] = refPatch[i][j]
 				else:
-					overlap[i][j] = chosenPatch[i][j]
+					mixedPatch[i][j] = chosenPatch[i][j]
 	else:
 		for i in range(overlap):
 			for j in range(refPatch.shape[1]):
 				# use refPatch if 1; chosenPatch if 0
 				if pathMask[i][j] == 1:
-					overlap[i][j] = refPatch[i][j]
+					mixedPatch[i][j] = refPatch[i][j]
 				else:
-					overlap[i][j] = chosenPatch[i][j]
+					mixedPatch[i][j] = chosenPatch[i][j]
 
-	return overlap
+	return mixedPatch
 
 # TODO: cythonize all helper functions
 def makePatches(img, patchSize):
@@ -207,7 +210,7 @@ def makePatches(img, patchSize):
 	return patches
 
 
-cdef getMatchingPatch(FLOAT[:] distances,
+cdef int getMatchingPatch(FLOAT[:] distances,
 					  FLOAT thresholdFactor) nogil:
 	'''
 	Given a 1-D array of patch distances, choose matching patch index that is within threshold.
@@ -218,7 +221,7 @@ cdef getMatchingPatch(FLOAT[:] distances,
 		FLOAT minVal
 
 	# do not select current patch
-	minVal = 99999.
+	minVal = 999999.
 	for i in range(len(d)):
 		if d[i] < minVal and d[i] > 0.01:
 			minVal = d[i]
@@ -237,7 +240,7 @@ cdef getMatchingPatch(FLOAT[:] distances,
 			ctr += 1
 
 	cdef:
-		FLOAT[ctr] indices
+		int[ctr] indices
 
 	# store all qualifying indices of d in indices
 	for i in range(len(d)):
@@ -253,22 +256,25 @@ cdef getMatchingPatch(FLOAT[:] distances,
 	# idx = indices[np.random.randint(0,len(indices))]
 	return indices[idx]
 
+'''
+This function inserts a patch into img at position (i,j).
+'''
+cpdef void insert(FLOAT[:,:,:] target, FLOAT[:,:,:] patch, int i, int j) nogil:
+	cdef:
+		int patchSize = patch.shape[0]
+		int x = target.shape[1]
+		int y = target.shape[0]
+		int patchV, patchH
 
-cpdef insert(target, patch, i, j):
-	'''
-	This function inserts a patch into img at position (i,j).
-	'''
-	patchSize = patch.shape[0]
-	patchV = min(i+patchSize, target.shape[0]) - i
-	patchH = min(j+patchSize, target.shape[1]) - j
-	target[i:min(i+patchSize, target.shape[0]), j:min(j+patchSize, target.shape[1]), :] = patch[:patchV, :patchH, :]
+	patchV = int_min(i+patchSize, y) - i
+	patchH = int_min(j+patchSize, x) - j
+	target[i:int_min(i+patchSize, y), j:int_min(j+patchSize, x), :] = patch[:patchV, :patchH, :]
 
-
-cdef makeCostMap(FLOAT[:,:,:] img1,
+'''
+This function takes in 2 overlapping image regions, computes pixel-wise L2 norm and returns cost map.
+'''
+cdef FLOAT* makeCostMap(FLOAT[:,:,:] img1,
 				 FLOAT[:,:,:] img2) nogil:
-	'''
-	This function takes in 2 overlapping image regions, computes pixel-wise L2 norm and returns cost map.
-	'''
 	cdef:
 		int i,j,k
 		FLOAT[:,:,:] distances = img1
@@ -286,85 +292,109 @@ cdef makeCostMap(FLOAT[:,:,:] img1,
 			results[i][j] += sqrt(distances[i,j,0]**2 + distances[i,j,1]**2 + distances[i,j,2]**2)
 	
 	return results
-	# return np.sqrt(np.sum(np.square(img1-img2), axis=2))
-
 
 '''
 DP this shit, yo
 '''
-cdef calcMinCosts(FLOAT[:,:] costMap) nogil:	
+cdef FLOAT* calcMinCosts(FLOAT[:,:] costMap) nogil:	
 	cdef:
 		# TODO does this copy or reference?
 		# this needs to be a copy
 		#FLOAT [costMap.shape[0]][costMap.shape[1]] cumuCosts
 		FLOAT[:,:] cumuCosts = costMap
+		# TODO: maybe try this: FLOAT[:,:] cumuCosts = costMap[:,:]
 		int x = costMap.shape[1]
 		int y = costMap.shape[0]
-		FLOAT[3] c
+		FLOAT minVal
 		int i, j
-	
-	# default ones
-	cumuCosts[:,:] = 1.
-	#cumuCosts = np.ones(costMap.shape)
-	
-	#cumuCosts[:] = costMap[:]
 
 	for i in range(y - 1):
 		for j in range(x):
-			if j == 0:
-				c = cumuCosts[i, 0:2]
-			elif j == x - 1:
-				c = cumuCosts[i, x - 2:x]
-			else:
-				c = cumuCosts[i, j - 1:j + 2]
+			minVal = 99999.
+			if j != 0 and minVal > cumuCosts[i,j-1]:
+				minVal = cumuCosts[i,j-1]
+			if j != x - 1 and minVal > cumuCosts[i,j+1]:
+				minVal = cumuCosts[i,j+1]
+			if minVal > cumuCosts[i,j]:
+				minVal = cumuCosts[i,j]
 
-			# TODO find min of c without np
-			cumuCosts[i + 1,j] += np.min(c)
+			cumuCosts[i + 1,j] += minVal
 
 	return cumuCosts
 
+'''
+Trace DP shit backwards, yo
+'''
+cdef INT* pathBacktrace(FLOAT[:,:] cumuCosts) nogil:
+	cdef:
+		int x = cumuCosts.shape[1]
+		int y = cumuCosts.shape[0]
+		INT dumb[y][x]
+		INT[:,:] pathCosts = dumb
+		int minIdx, maxIdx, row, i, idx
+		FLOAT minVal
 
-cdef pathBacktrace(cumuCosts):
-	'''
-	trace DP shit backwards, yo
-	'''
-	x = cumuCosts.shape[1]
-	y = cumuCosts.shape[0]
-
-	pathCosts = np.zeros(cumuCosts.shape, dtype='float32')
+	# pathCosts = np.zeros(cumuCosts.shape, dtype='float32')
+	pathCosts[:,:] = 0
 
 	minIdx = 0
 	maxIdx = x - 1
 	for row in range(y - 1, -1, -1):
-		i = np.argmin(cumuCosts[row, minIdx:maxIdx + 1])
-		pathCosts[row, i] = 1
-		minIdx = np.max([0, i - 1])
-		maxIdx = np.min([x - 1, i + 1])
+		minVal = 999999.
+		idx = 0
+		# find index of minimum value in row (idx = np.argmin(cumuCosts[row, minIdx:maxIdx + 1])
+		for i in range(minIdx, maxIdx + 1):
+			if minVal > cumuCosts[row, i]:
+				minVal = cumuCosts[row, i]
+				idx = i
+		pathCosts[row, idx] = 1
+
+		# reset minIdx and maxIdx
+		if idx - 1 > 0:
+			minIdx = idx - 1
+		else:
+			minidx = 0
+
+		if idx + 1 < x - 1:
+			maxIdx = idx + 1
+		else:
+			maxIdx = x - 1
+
+		# minIdx = np.max([0, idx - 1])
+		# maxIdx = np.min([x - 1, idx + 1])
 
 	return pathCosts
 
 
-cdef cheapVertPath(FLOAT[:,:] costMap) nogil:
+cdef INT* cheapVertPath(FLOAT[:,:] costMap) nogil:
 	cdef:
 		FLOAT[:,:] costs = calcMinCosts(costMap)
-		FLOAT[:,:] path = pathBacktrace(costs)
+		INT[:,:] path = pathBacktrace(costs)
 	return path
 
 
 '''
 Generate binary mask
 '''
-cdef cheapVertCut(FLOAT[:,:] costMap) nogil:
+cdef INT* cheapVertCut(FLOAT[:,:] costMap) nogil:
 	cdef:
-		FLOAT[:,:] path = cheapVertPath(costMap)
+		INT[:,:] path = cheapVertPath(costMap)
+		int row
+		int x = path.shape[1]
+		int y = path.shape[0]
 
-	for row in range(path.shape[0]):
-		path[row, 0:np.argmax(path[row, :])] = 1
+	for row in range(y):
+		for col in range(x):
+			if path[row, col] == 0:
+				path[row, col] = 1
+			else:
+				break
 	return path
 
 # TODO oh god taking a transpose in C...
-cdef cheapHorizCut(costMap):
-	path = cheapVertCut(costMap.T).T
+cdef INT* cheapHorizCut(FLOAT[:,:] costMap) nogil:
+	cdef:
+		INT[:,:] path = cheapVertCut(costMap.T).T
 	return path
 
 

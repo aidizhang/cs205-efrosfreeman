@@ -5,7 +5,7 @@ import numpy as np
 cimport cython
 from cython.parallel import parallel, prange
 from libc.math cimport sqrt
-from libc.stdlib cimport rand
+from libc.stdlib cimport rand, malloc, free
 from libc.stdint cimport uintptr_t
 
 import math
@@ -32,6 +32,7 @@ cpdef void pastePatch(int textureWidth, int textureHeight, int tileSize, int ove
 		int rowNo = tid / numCols
 		int colNo = tid % numCols
 		int blockLeft, blockUp
+		int patchSize = overlap + tileSize
 
 	print "On iteration %i" % tid
 
@@ -45,7 +46,8 @@ cpdef void pastePatch(int textureWidth, int textureHeight, int tileSize, int ove
 	np_distances = np.empty_like(patches, dtype=np.float32)
 	np_pathCostsLeft = np.zeros((tileSize, overlap), dtype=np.int32)
 	np_pathCostsUp = np.zeros((overlap, tileSize), dtype=np.int32)
-	np_pathMaskBoth = np.zeros((refPatchUp.shape[0], refPatchLeft.shape[1]), dtype=np.int32)
+	# refPatchUp.shape[0], refPatchLeft.shape[1]
+	np_pathMaskBoth = np.zeros((overlap, overlap), dtype=np.int32)
 
 	np_costMapLeft = np.zeros((tileSize, overlap), dtype=np.float32)
 	np_costMapUp = np.zeros((overlap, tileSize), dtype=np.float32)
@@ -111,19 +113,20 @@ cpdef void pastePatch(int textureWidth, int textureHeight, int tileSize, int ove
 			combineRefAndChosen(pathCostsUp, refPatchUp, chosenPatch, 1, overlap)
 
 		if blockLeft and blockUp:
-			for i in range(refPatchUp.shape[0]):
-				for j in range(refPatchLeft.shape[1]):
+			for i in range(overlap):
+				for j in range(overlap):
 					# bitwise or operation
 					pathMaskBoth[i,j] = 1 - ((1-pathCostsUp[i,j]) * (1-pathCostsLeft[i,j]))
 
-			pathCostsLeft[:pathMaskBoth.shape[0],:] = pathMaskBoth
-			pathCostsUp[:,:pathMaskBoth.shape[1]] = pathMaskBoth
+			pathCostsLeft[:overlap,:] = pathMaskBoth
+			pathCostsUp[:,:overlap] = pathMaskBoth
 
 			combineRefAndChosen(pathCostsLeft, refPatchLeft, chosenPatch, 0, overlap)
 			combineRefAndChosen(pathCostsUp, refPatchUp, chosenPatch, 1, overlap)
 
 		insert(texture, chosenPatch, rowNo*tileSize, colNo*tileSize)
 
+# TODO: is this really necessary? just use python min in nogil
 cdef inline int int_min(int a, int b) nogil: 
 	return a if a <= b else b
 
@@ -233,16 +236,18 @@ cdef int getMatchingPatch(FLOAT[:] distances, float thresholdFactor) nogil:
 			ctr += 1
 
 	cdef:
-		int[ctr] indices
+		int* indices = <int*> malloc(ctr * sizeof(int))
 
 	# store all qualifying indices of d in indices
 	for i in range(numPatches):
 		if d[i] < threshold:
 			indices[ctr - 1] = i
 			ctr -= 1
+			if ctr == 0:
+				break
 	
 	cdef:
-		int r = rand()
+		int r = rand() # gives random number from 0 to RAND_MAX
 		int idx = r/ctr
 
 	# indices = np.where(d < threshold)[0]

@@ -40,11 +40,14 @@ def schedulePastePatch(texture, patches, initialPatch, metadata, tid, num_thread
 		events[tid - 1].wait()
 
 	# do work if ready
-	pastePatch(metadata['textureSize'],
+	pastePatch(metadata['textureWidth'],
+			metadata['textureHeight'],
 			metadata['tileSize'],
 			metadata['overlap'],
 			metadata['numRows'],
 			metadata['numCols'],
+			tid,
+			texture,
 			patches,
 			initialPatch)
 
@@ -102,7 +105,8 @@ if __name__ == "__main__":
 	M = int(math.ceil(textureSize[1]/float(tileSize)))
 
 	# create metadata for patch synthesis
-	metadata = {'textureSize':textureSize, 
+	metadata = {'textureWidth':textureSize[0],
+				'textureHeight':textureSize[1], 
 				'overlap':overlap,
 				'tileSize':tileSize,
 				'numCols':N,

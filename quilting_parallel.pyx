@@ -207,7 +207,8 @@ def makePatches(img, patchSize):
 	return patches
 
 
-cdef getMatchingPatch(FLOAT[:] distances, FLOAT thresholdFactor) nogil:
+cdef getMatchingPatch(FLOAT[:] distances,
+					  FLOAT thresholdFactor) nogil:
 	'''
 	Given a 1-D array of patch distances, choose matching patch index that is within threshold.
 	'''
@@ -253,7 +254,7 @@ cdef getMatchingPatch(FLOAT[:] distances, FLOAT thresholdFactor) nogil:
 	return indices[idx]
 
 
-cdef insert(target, patch, i, j):
+cpdef insert(target, patch, i, j):
 	'''
 	This function inserts a patch into img at position (i,j).
 	'''
@@ -263,7 +264,8 @@ cdef insert(target, patch, i, j):
 	target[i:min(i+patchSize, target.shape[0]), j:min(j+patchSize, target.shape[1]), :] = patch[:patchV, :patchH, :]
 
 
-cdef makeCostMap(FLOAT[:,:,:] img1, FLOAT[:,:,:] img2) nogil:
+cdef makeCostMap(FLOAT[:,:,:] img1,
+				 FLOAT[:,:,:] img2) nogil:
 	'''
 	This function takes in 2 overlapping image regions, computes pixel-wise L2 norm and returns cost map.
 	'''
@@ -287,15 +289,26 @@ cdef makeCostMap(FLOAT[:,:,:] img1, FLOAT[:,:,:] img2) nogil:
 	# return np.sqrt(np.sum(np.square(img1-img2), axis=2))
 
 
-cdef calcMinCosts(costMap):
-	'''
-	DP this shit, yo
-	'''
-	cumuCosts = np.ones(costMap.shape)
-	x = costMap.shape[1]
-	y = costMap.shape[0]
+'''
+DP this shit, yo
+'''
+cdef calcMinCosts(FLOAT[:,:] costMap) nogil:	
+	cdef:
+		# TODO does this copy or reference?
+		# this needs to be a copy
+		#FLOAT [costMap.shape[0]][costMap.shape[1]] cumuCosts
+		FLOAT[:,:] cumuCosts = costMap
+		int x = costMap.shape[1]
+		int y = costMap.shape[0]
+		FLOAT[3] c
+		int i, j
 	
-	cumuCosts[:] = costMap[:]
+	# default ones
+	cumuCosts[:,:] = 1.
+	#cumuCosts = np.ones(costMap.shape)
+	
+	#cumuCosts[:] = costMap[:]
+
 	for i in range(y - 1):
 		for j in range(x):
 			if j == 0:
@@ -305,6 +318,7 @@ cdef calcMinCosts(costMap):
 			else:
 				c = cumuCosts[i, j - 1:j + 2]
 
+			# TODO find min of c without np
 			cumuCosts[i + 1,j] += np.min(c)
 
 	return cumuCosts
@@ -330,23 +344,25 @@ cdef pathBacktrace(cumuCosts):
 	return pathCosts
 
 
-cdef cheapVertPath(costMap):
-	costs = calcMinCosts(costMap)
-	path = pathBacktrace(costs)
+cdef cheapVertPath(FLOAT[:,:] costMap) nogil:
+	cdef:
+		FLOAT[:,:] costs = calcMinCosts(costMap)
+		FLOAT[:,:] path = pathBacktrace(costs)
 	return path
 
 
-cdef cheapVertCut(costMap):
-	'''
-	Generate binary mask
-	'''
-	path = cheapVertPath(costMap)
+'''
+Generate binary mask
+'''
+cdef cheapVertCut(FLOAT[:,:] costMap) nogil:
+	cdef:
+		FLOAT[:,:] path = cheapVertPath(costMap)
 
 	for row in range(path.shape[0]):
 		path[row, 0:np.argmax(path[row, :])] = 1
 	return path
 
-
+# TODO oh god taking a transpose in C...
 cdef cheapHorizCut(costMap):
 	path = cheapVertCut(costMap.T).T
 	return path

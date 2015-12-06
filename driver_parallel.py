@@ -111,6 +111,7 @@ if __name__ == "__main__":
 	# paste all patches: paste includes 1) selecting from candidate patches, 2) calculating min error boundary
 	# and 3) inserting patches into output texture
 	# TODO: think about whether it should return or remain as void function
+	insert(texture, initialPatch, 0, 0)
 	parallelPastePatch(texture, patches, initialPatch, metadata)
 
 	# convert texture into flattened array pixels_out for exporting as PNG

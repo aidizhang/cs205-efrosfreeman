@@ -5,6 +5,7 @@ import numpy as np
 cimport cython
 from cython.parallel import parallel, prange
 from libc.math cimport sqrt
+from libc.stdlib cimport rand
 from libc.stdint cimport uintptr_t
 
 import math
@@ -21,79 +22,57 @@ ctypedef np.float32_t FLOAT
 ctypedef np.uint32_t UINT
 ctypedef np.int32_t INT
 
-'''
-This function computes the distance of refPatch to all patches in patches, returning a 1D array of all distances.
-Returns 1-D array of distances over all patches.
-'''
-# TODO: should make contiguous?
-cpdef overlapDistances(FLOAT[:,:,:] refPatch,
-					   INT[:,:,:,:] patches,
-					   FLOAT[:,:,:,:] distances,
-					   FLOAT[:] results):
-	cdef:
-		int numPatches = patches.shape[0]
-		int i, j, k, p
-	
-	# calculate distances of refPatch from patches
-	# TODO: try load balancing with chunksize
-	with nogil:
-		for i in prange(numPatches, num_threads=8, schedule='dynamic'):
-			for j in range(refPatch.shape[0]):
-				for k in range(refPatch.shape[1]):
-					for p in range(3): # num channels
-						distances[i,j,k,p] = patches[i,j,k,p] - refPatch[j,k,p]
-
-		#calculate L2 norm and sum over all reference patch pixels
-		for i in prange(numPatches, num_threads=8, schedule='dynamic'):
-			for j in range(refPatch.shape[0]):
-				for k in range(refPatch.shape[1]):
-					results[i] += sqrt(distances[i,j,k,0]**2 + distances[i,j,k,1]**2 + distances[i,j,k,2]**2)
-
 
 cdef pastePatches(int textureSize, int tileSize, int overlap, int numRows, int numCols, int tid,
 				  INT[:,:,:,:] patches, INT[:,:,:] initialPatch):
 	# TODO: necessary?
 	cdef:
-		int k = -1
-		int i, j, rowNo, colNo
+		int i, j, rowNo, colNo, chosenIdx
+		# int refPatchLeftX = refPatchLeft.shape[1]
+		# int refPatchLeftY = refPatchLeft.shape[0]
+		# int refPatchUpX = refPatchUp.shape[1]
+		# int refPatchUpY = refPatchUp.shape[0]
+		# int refPatchBothX = refPatchBoth.shape[1]
+		# int refPatchBothy = refPatchBoth.shape[0]
 		bool blockLeft, blockUp
 
 	rowNo = tid / numCols
 	colNo  = tid % numCols
 	print "On iteration %i" % tid
 
-	with nogil:
-		# insert default initial top-left patch
-		if k == 0:
-			insert(texture, initialPatch, rowNo, colNo)
-			continue
+	# declaring distance arrays
+	distLeft = np.zeros(patches.shape[0], dtype=np.float32)
+	distUp = np.zeros(patches.shape[0], dtype=np.float32)
+	distBoth = np.zeros(patches.shape[0], dtype=np.float32)
+	# TODO: double?
+	distances = np.empty_like(patches, dtype=np.float32)
 
+	cdef:
+		FLOAT[:] d = distLeft
+		FLOAT[:,:,:] refPatchLeft, refPatchUp, refPatchBoth
+		INT[:,:,:] chosenPatch
+		FLOAT[:,:] costMap, pathMaskLeft, pathMaskUp, pathMaskBoth
+
+	with nogil:
 		blockLeft = colNo>0
 		blockUp = rowNo>0
-
-		# allocate memory for overlap, distances, and results
-		# TODO: double?
-		distances = np.empty_like(patches, dtype=np.float32)
 		
 		# find reference patchs and calculate overlap distances over all sample patches
 		if blockLeft:
 			refPatchLeft = texture[rowNo*tileSize:min(rowNo*tileSize + patchSize, textureSize[1]), 
 							colNo*tileSize:min(colNo*tileSize + overlap, textureSize[0]), :]
-			distLeft = np.zeros(patches.shape[0], dtype=np.float32)
 			overlapDistances(refPatchLeft, patches, distances, distLeft)
 			d = distLeft
 
 		if blockUp:
 			refPatchUp = texture[rowNo*tileSize:min(rowNo*tileSize + overlap, textureSize[1]), 
 							colNo*tileSize:min(colNo*tileSize + patchSize, textureSize[0]), :]
-			distUp = np.zeros(patches.shape[0], dtype=np.float32)
 			overlapDistances(refPatchUp, patches, distances, distUp)
 			d = distUp
 
 		if blockLeft and blockUp:
 			refPatchBoth = texture[rowNo*tileSize:min(rowNo*tileSize + overlap, textureSize[1]), 
-							colNo*tileSize:min(colNo*tileSize + overlap, textureSize[0]), :]
-			distBoth = np.zeros(patches.shape[0], dtype=np.float32)
+							colNo*tileS           ize:min(colNo*tileSize + overlap, textureSize[0]), :]
 			overlapDistances(refPatchBoth, patches, distances, distBoth)
 			d = distLeft + distUp - distBoth
 
@@ -105,7 +84,9 @@ cdef pastePatches(int textureSize, int tileSize, int overlap, int numRows, int n
 		if blockLeft:
 			costMap = makeCostMap(refPatchLeft, chosenPatch[:refPatchLeft.shape[0], :overlap, :])
 			pathMaskLeft = cheapVertCut(costMap)
-			overlapLeft = np.where(np.dstack([pathMaskLeft] * 3), refPatchLeft, chosenPatch[:refPatchLeft.shape[0], :overlap, :])
+			# TODO write our own function for this
+			overlapLeft = combineRefAndChosen(pathMaskLeft, refPatchLeft, chosenPatch, 0, overlap)
+			# overlapLeft = np.where(np.dstack([pathMaskLeft] * 3), refPatchLeft, chosenPatch[:refPatchLeft.shape[0], :overlap, :])
 			# overwrite with min cut
 			chosenPatch[:refPatchLeft.shape[0],:overlap,:] = overlapLeft
 
@@ -114,12 +95,13 @@ cdef pastePatches(int textureSize, int tileSize, int overlap, int numRows, int n
 			# TODO: stupid solution; find better one
 			costMap = makeCostMap(refPatchUp, chosenPatch[:overlap, :refPatchUp.shape[1], :])
 			pathMaskUp = cheapHorizCut(costMap)
-			overlapUp = np.where(np.dstack([pathMaskUp] * 3), refPatchUp, chosenPatch[:overlap, :refPatchUp.shape[1], :])
+			overlapUp = combineRefAndChosen(pathMaskUp, refPatchUp, chosenPatch, 1, overlap)
+			# overlapUp = np.where(np.dstack([pathMaskUp] * 3), refPatchUp, chosenPatch[:overlap, :refPatchUp.shape[1], :])
 			# overwrite with min cut
 			chosenPatch[:overlap,:refPatchUp.shape[1],:] = overlapUp
 
 		if blockLeft and blockUp:
-			pathMaskBoth = np.zeros((refPatchUp.shape[0], refPatchLeft.shape[1]))
+			# pathMaskBoth = np.zeros((refPatchUp.shape[0], refPatchLeft.shape[1]))
 			for i in range(refPatchUp.shape[0]):
 				for j in range(refPatchLeft.shape[1]):
 					# bitwise or operation
@@ -128,14 +110,75 @@ cdef pastePatches(int textureSize, int tileSize, int overlap, int numRows, int n
 			pathMaskLeft[:pathMaskBoth.shape[0],:] = pathMaskBoth
 			pathMaskUp[:,:pathMaskBoth.shape[1]] = pathMaskBoth
 
-			overlapBothLeft = np.where(np.dstack([pathMaskLeft] * 3), refPatchLeft, chosenPatch[:refPatchLeft.shape[0], :overlap, :])
-			overlapBothUp = np.where(np.dstack([pathMaskUp] * 3), refPatchUp, chosenPatch[:overlap, :refPatchUp.shape[1], :])
+			overlapBothLeft = combineRefAndChosen(pathMaskLeft, refPatchLeft, chosenPatch, 0, overlap)
+			overlapBothUp = combineRefAndChosen(pathMaskUp, refPatchUp, chosenPatch, 1, overlap)
+			# overlapBothLeft = np.where(np.dstack([pathMaskLeft] * 3), refPatchLeft, chosenPatch[:refPatchLeft.shape[0], :overlap, :])
+			# overlapBothUp = np.where(np.dstack([pathMaskUp] * 3), refPatchUp, chosenPatch[:overlap, :refPatchUp.shape[1], :])
 			
 			# overwrite with min cut
 			chosenPatch[:refPatchLeft.shape[0],:overlap,:] = overlapBothLeft
 			chosenPatch[:overlap,:refPatchUp.shape[1],:] = overlapBothUp
 
 		insert(texture, chosenPatch, rowNo*tileSize, colNo*tileSize)
+
+
+'''
+This function computes the distance of refPatch to all patches in patches, returning a 1D array of all distances.
+Returns 1-D array of distances over all patches.
+'''
+# TODO: should make contiguous?
+cdef overlapDistances(FLOAT[:,:,:] refPatch,
+					   INT[:,:,:,:] patches,
+					   FLOAT[:,:,:,:] distances,
+					   FLOAT[:] results) nogil:
+	cdef:
+		int numPatches = patches.shape[0]
+		int i, j, k, p
+	
+	# calculate distances of refPatch from patches
+	# TODO: try load balancing with chunksize
+	for i in prange(numPatches, num_threads=8, schedule='dynamic'):
+		for j in range(refPatch.shape[0]):
+			for k in range(refPatch.shape[1]):
+				for p in range(3): # num channels
+					distances[i,j,k,p] = patches[i,j,k,p] - refPatch[j,k,p]
+
+	#calculate L2 norm and sum over all reference patch pixels
+	for i in prange(numPatches, num_threads=8, schedule='dynamic'):
+		for j in range(refPatch.shape[0]):
+			for k in range(refPatch.shape[1]):
+				results[i] += sqrt(distances[i,j,k,0]**2 + distances[i,j,k,1]**2 + distances[i,j,k,2]**2)
+
+
+cdef combineRefAndChosen(FLOAT[:,:] pathMask, 
+						FLOAT[:,:,:] refPatch, 
+						FLOAT[:,:,:] chosenPatch, 
+						int dir, 
+						int overlap) nogil:
+	cdef:
+		# TODO: do we want this function to return or be void???
+		FLOAT[:,:,:] overlap = refPatch
+
+	# dir: 0 for left, 1 for up
+	# overlapLeft = np.where(np.dstack([pathMaskLeft] * 3), refPatchLeft, chosenPatch[:refPatchLeft.shape[0], :overlap, :])
+	if dir == 0:
+		for i in range(refPatch.shape[0]):
+			for j in range(overlap):
+				# use refPatch if 1; chosenPatch if 0
+				if pathMask[i][j] == 1:
+					overlap[i][j] = refPatch[i][j]
+				else:
+					overlap[i][j] = chosenPatch[i][j]
+	else:
+		for i in range(overlap):
+			for j in range(refPatch.shape[1]):
+				# use refPatch if 1; chosenPatch if 0
+				if pathMask[i][j] == 1:
+					overlap[i][j] = refPatch[i][j]
+				else:
+					overlap[i][j] = chosenPatch[i][j]
+
+	return overlap
 
 # TODO: cythonize all helper functions
 def makePatches(img, patchSize):
@@ -164,20 +207,50 @@ def makePatches(img, patchSize):
 	return patches
 
 
-cdef getMatchingPatch(distances, thresholdFactor):
+cdef getMatchingPatch(FLOAT[:] distances, FLOAT thresholdFactor) nogil:
 	'''
 	Given a 1-D array of patch distances, choose matching patch index that is within threshold.
 	'''
-	d = distances
+	cdef:
+		FLOAT[:] d = distances 
+		int i
+		FLOAT minVal
+
 	# do not select current patch
-	d[d < np.finfo(d.dtype).eps] = 99999
-	m = np.min(d)
+	minVal = 99999.
+	for i in range(len(d)):
+		if d[i] < minVal and d[i] > 0.01:
+			minVal = d[i]
+
+	cdef:
+		FLOAT threshold = thresholdFactor * minVal
+		int ctr = 0
+
 	# choose random index such that the distance is within threshold factor of minimum distance
 	# TODO: make default thresholdFactor
 	threshold = thresholdFactor * m
-	indices = np.where(d < threshold)[0]
-	idx = indices[np.random.randint(0,len(indices))]
-	return idx
+	
+	# count number of qualifying indices to allocate memory for indices
+	for i in range(len(d)):
+		if d[i] < threshold:
+			ctr += 1
+
+	cdef:
+		FLOAT[ctr] indices
+
+	# store all qualifying indices of d in indices
+	for i in range(len(d)):
+		if d[i] < threshold:
+			indices[ctr - 1] = i
+			ctr -= 1
+	
+	cdef:
+		int r = rand()
+		int idx = r/ctr
+
+	# indices = np.where(d < threshold)[0]
+	# idx = indices[np.random.randint(0,len(indices))]
+	return indices[idx]
 
 
 cdef insert(target, patch, i, j):
@@ -190,11 +263,28 @@ cdef insert(target, patch, i, j):
 	target[i:min(i+patchSize, target.shape[0]), j:min(j+patchSize, target.shape[1]), :] = patch[:patchV, :patchH, :]
 
 
-cdef makeCostMap(img1, img2):
+cdef makeCostMap(FLOAT[:,:,:] img1, FLOAT[:,:,:] img2) nogil:
 	'''
 	This function takes in 2 overlapping image regions, computes pixel-wise L2 norm and returns cost map.
 	'''
-	return np.sqrt(np.sum(np.square(img1-img2), axis=2))
+	cdef:
+		int i,j,k
+		FLOAT[:,:,:] distances = img1
+		FLOAT[img1.shape[0],img1.shape[1]] results = 0.
+
+	# calculate distances of refPatch from patches
+	for i in range(img1.shape[0]):
+		for j in range(img1.shape[1]):
+			for k in range(3): # num channels
+				distances[i,j,k] = img[i,j,k] - img[i,j,k]
+
+	#calculate L2 norm and sum over all reference patch pixels
+	for i in range(img1.shape[0]):
+		for j in range(img1.shape[1]):
+			results[i][j] += sqrt(distances[i,j,0]**2 + distances[i,j,1]**2 + distances[i,j,2]**2)
+	
+	return results
+	# return np.sqrt(np.sum(np.square(img1-img2), axis=2))
 
 
 cdef calcMinCosts(costMap):
@@ -227,7 +317,7 @@ cdef pathBacktrace(cumuCosts):
 	x = cumuCosts.shape[1]
 	y = cumuCosts.shape[0]
 
-	pathCosts = np.zeros(cumuCosts.shape)
+	pathCosts = np.zeros(cumuCosts.shape, dtype='float32')
 
 	minIdx = 0
 	maxIdx = x - 1

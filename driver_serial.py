@@ -156,7 +156,11 @@ if __name__ == "__main__":
 	# read in original image using Python Image Library (PIL)
 	orig_img = Image.open("text.png")
 	(width, height) = orig_img.size
-	print width, height
+
+	vertScaleFactor = 2
+	horizScaleFactor = 2
+
+	assert vertScaleFactor >= 1 and horizScaleFactor >= 1, "cannot scale down"
 
 	# extract list of pixels in RGB/grayscale format
 	pixels = list(orig_img.getdata())
@@ -167,13 +171,14 @@ if __name__ == "__main__":
 	assert sample_2d.ndim == 3 and (sample_2d.shape[2] == 3 or sample_2d.shape[2] == 1), sample_2d.shape
 
 	# choose patch from input sample by slicing
+	# TODO hard coded
 	patchSize = 30
 	sl = (slice(0,patchSize), slice(0,patchSize), slice(0,3))
 	# TODO: randomly select initial patch
 	initialPatch = sample_2d[sl[0], sl[1], sl[2]]
 
 	# define textureSize, tileSize and initialize blank canvas
-	textureSize = (width * 2, height * 2)
+	textureSize = (width * horizScaleFactor, height * vertScaleFactor)
 	overlap = patchSize / 6
 	tileSize = patchSize - overlap
 	texture = np.zeros((textureSize[1], textureSize[0], 3), dtype=np.float32)
@@ -262,7 +267,7 @@ if __name__ == "__main__":
 	pixels_out = map(lambda x: (x[0],x[1],x[2]), pixels_out)
 	img_out = Image.new(orig_img.mode, textureSize)
 	img_out.putdata(pixels_out)
-	img_out.save("text_generated_30.png", "png")
+	# img_out.save("text_generated_30.png", "png")
 	img_out.show()
 
 	print "donedonedone!"

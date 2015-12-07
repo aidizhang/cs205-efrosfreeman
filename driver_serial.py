@@ -6,7 +6,6 @@ import sys
 import os
 import random
 
-from pylab import *
 from PIL import Image
 
 def overlapDistances(refPatch, patches):
@@ -37,6 +36,8 @@ def makePatches(img, patchSize):
 	'''
 	#check that img should have channel axis, so (x,y,channel)
 	assert img.ndim == 3, "image should have channel axis"
+
+	print "Making patches..."
 
 	nX = img.shape[0] - patchSize
 	nY = img.shape[1] - patchSize
@@ -69,50 +70,6 @@ def getMatchingPatch(distances, thresholdFactor):
 	indices = np.where(d < threshold)[0]
 	idx = indices[np.random.randint(0,len(indices))]
 	return idx
-
-
-def mkTexture(textureSize, patches, overlap):
-	'''
-	Main function
-	'''
-	patchSize = patches.shape[0]
-	nChannels = 3 # currently hardcoded
-	tileSize = patchSize - overlap
-	texture = np.zeros((textureSize[0], textureSize[1], nChannels), dtype=np.float32)
-
-	nPatches = patches.shape[2]
-
-	k = -1
-	width, height = int(math.ceil(textureSize[0]/float(tileSize))), int(math.ceil(textureSize[0]/float(tileSize)))
-	for i in range(width):
-		for j in range(height):
-			k += 1
-
-			print "On iteration %i" % k
-
-			#use random patch as first patch
-			texture[0:patchSize, 0:patchSize, :] = patches[:,:,:,np.random.randint(0,nPatches)]
-
-			#slicing for left overlap
-			sl_l = (slice(i*tileSize, min(i*tileSize + patchSize, texture.shape[0])), 
-						slice(j*tileSize, min(j*tileSize + overlap, texture.shape[1])), slice(0, nChannels))
-
-			#slicing for writing PATCH at position (i,j)
-			sl_patch = (slice(i*tileSize, min(i*tileSize + patchSize, texture.shape[0])), 
-						slice(j*tileSize, min(j*tileSize + patchSize, texture.shape[1])), slice(0, nChannels))
-
-			#finds minimum overlap, and finds minimum distance to available patches
-			ov1 = texture[sl_l[0], sl_l[1], :, np.newaxis]
-			d = patchDistance(ov1, patches)
-
-            #choose best possible matched patch
-			chosenPatchIndex = getMatchingPatch(d)
-			chosenPatch =  patches[sl_patch[0], sl_patch[1], :, chosenPatchIndex]
-
-			#paste chosenPatch at texture at position (i,j)
-			texture[sl_patch] = chosenPatch
-
-	return texture
 
 
 def insert(target, patch, i, j):
@@ -194,6 +151,8 @@ def cheapHorizCut(costMap):
 
 
 if __name__ == "__main__":
+	print "Starting..."
+
 	# read in original image using Python Image Library (PIL)
 	orig_img = Image.open("basket.png")
 	(width, height) = orig_img.size
@@ -228,6 +187,9 @@ if __name__ == "__main__":
 	for i in range(M): # height M
 		for j in range(N): # width N
 			k += 1
+
+			print "On iteration %i" % k
+
 			# insert default initial top-left patch
 			if k == 0:
 				insert(texture, initialPatch, i, j)
@@ -299,7 +261,10 @@ if __name__ == "__main__":
 	pixels_out = map(lambda x: (x[0],x[1],x[2]), pixels_out)
 	img_out = Image.new(orig_img.mode, textureSize)
 	img_out.putdata(pixels_out)
+	img_out.save("basket_generated", "PNG")
 	img_out.show()
+
+	print "donedonedone!"
 
 
 

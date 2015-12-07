@@ -99,7 +99,7 @@ if __name__ == "__main__":
 	texture = np.zeros((textureSize[1], textureSize[0], 3), dtype=np.float32)
 
 	# generate all sample patches
-	patches = makePatches(sample_2d, 30)
+	patches = makePatches(sample_2d, patchSize)
 	
 	N = int(math.ceil(textureSize[0]/float(tileSize)))
 	M = int(math.ceil(textureSize[1]/float(tileSize)))

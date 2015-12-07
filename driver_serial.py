@@ -154,8 +154,9 @@ if __name__ == "__main__":
 	print "Starting..."
 
 	# read in original image using Python Image Library (PIL)
-	orig_img = Image.open("basket.png")
+	orig_img = Image.open("text.png")
 	(width, height) = orig_img.size
+	print width, height
 
 	# extract list of pixels in RGB/grayscale format
 	pixels = list(orig_img.getdata())
@@ -178,7 +179,7 @@ if __name__ == "__main__":
 	texture = np.zeros((textureSize[1], textureSize[0], 3), dtype=np.float32)
 
 	# generate all sample patches
-	patches = makePatches(sample_2d, 30)
+	patches = makePatches(sample_2d, patchSize)
 	
 	N = int(math.ceil(textureSize[0]/float(tileSize)))
 	M = int(math.ceil(textureSize[1]/float(tileSize)))
@@ -261,7 +262,7 @@ if __name__ == "__main__":
 	pixels_out = map(lambda x: (x[0],x[1],x[2]), pixels_out)
 	img_out = Image.new(orig_img.mode, textureSize)
 	img_out.putdata(pixels_out)
-	img_out.save("basket_generated", "PNG")
+	img_out.save("text_generated_30.png", "png")
 	img_out.show()
 
 	print "donedonedone!"

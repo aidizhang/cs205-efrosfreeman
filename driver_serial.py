@@ -4,15 +4,10 @@ import numpy as np
 import math
 import sys
 import os
-import png
-import itertools
 import random
 
 from pylab import *
 from PIL import Image
-from numpngw import write_png
-# from quilting_helpers import verticalPathsCost
-# from quilting_helpers import calculateCost
 
 def overlapDistances(refPatch, patches):
 	'''
@@ -92,6 +87,8 @@ def mkTexture(textureSize, patches, overlap):
 	for i in range(width):
 		for j in range(height):
 			k += 1
+
+			print "On iteration %i" % k
 
 			#use random patch as first patch
 			texture[0:patchSize, 0:patchSize, :] = patches[:,:,:,np.random.randint(0,nPatches)]

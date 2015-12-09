@@ -126,14 +126,12 @@ if __name__ == "__main__":
 	# extract list of pixels in RGB/grayscale format
 	pixels = list(orig_img.getdata())
 	sample_2d = np.array(pixels, np.int32)
-	# TODO hardcoded constants
 	sample_2d = sample_2d.reshape((height, -1, 3))
 
 	# ensure that img is an RGB image
 	assert sample_2d.ndim == 3 and sample_2d.shape[2] == 3, sample_2d.shape
 
 	# manually set patch_size
-	# TODO hardcoded constants
 	patch_size = 30
 
 	# generate all sample patches
@@ -145,8 +143,7 @@ if __name__ == "__main__":
 	rand_patch = random.randint(0, num_patches - 1)
 	initial_patch[:,:,:] = patches[rand_patch,:,:,:]
 
-	# define texture_size, tileSize and initialize blank canvas
-	# TODO hardcoded constants
+	# define texture_size, tile_size and initialize blank canvas
 	texture_size = (width * 2, height * 2)
 	texture_width = texture_size[0]
 	texture_height = texture_size[1]

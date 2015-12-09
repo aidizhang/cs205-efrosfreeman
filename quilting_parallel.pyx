@@ -24,7 +24,6 @@ ctypedef np.float32_t FLOAT
 ctypedef np.int32_t INT
 
 # TODO: should make contiguous memory?
-# TODO: haven't handled incorrect paths for pieces on the edge
 
 
 '''
@@ -411,14 +410,14 @@ cdef void calc_min_costs_horiz(FLOAT[:,:] cost_map) nogil:
 	for i in range(x - 1):
 		for j in range(y):
 			min_val = 99999.
-			if j != 0 and min_val > cost_map[j-1,i]:
-				min_val = cost_map[j-1,i]
-			if j != y - 1 and min_val > cost_map[j+1,i]:
-				min_val = cost_map[j+1,i]
-			if min_val > cost_map[j,i]:
-				min_val = cost_map[j,i]
+			if j != 0 and min_val > cost_map[j - 1, i]:
+				min_val = cost_map[j - 1, i]
+			if j != y - 1 and min_val > cost_map[j + 1,i]:
+				min_val = cost_map[j + 1, i]
+			if min_val > cost_map[j, i]:
+				min_val = cost_map[j, i]
 
-			cost_map[j,i+1] += min_val
+			cost_map[j,i + 1] += min_val
 
 
 '''
@@ -445,15 +444,8 @@ cdef void path_backtrace_horiz(FLOAT[:,:] cumu_costs, INT[:,:] path_costs) nogil
 				idx = i
 		path_costs[idx, col] = 1
 
-		if idx - 1 > 0:
-			min_idx = idx - 1
-		else:
-			min_idx = 0
-
-		if idx + 1 < y - 1:
-			max_idx = idx + 1
-		else:
-			max_idx = y - 1
+		min_idx = idx - 1 if idx - 1 > 0 else 0
+		max_idx = int_min(idx + 1, y - 1)
 
 
 '''

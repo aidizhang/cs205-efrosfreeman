@@ -20,13 +20,13 @@ from libc.math cimport sqrt
 from libc.stdlib cimport rand, malloc, free
 from libc.stdint cimport uintptr_t
 
-import math
-import sys
-import os
-import itertools
-import random
+# import math
+# import sys
+# import os
+# import itertools
+# import random
 
-from PIL import Image
+# from PIL import Image
 
 # numpy types
 ctypedef np.float32_t FLOAT

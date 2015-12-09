@@ -186,12 +186,12 @@ cdef void combineRefAndChosen(INT[:,:] pathMask,
 
 	if dir == 0:
 		for i in range(height):
-			for j in range(overlap):
+			for j in range(width):
 				# use refPatch if 1; chosenPatch if 0
 				if pathMask[i][j] == 1:
 					chosenPatch[i][j] = refPatch[i][j]
 	else:
-		for i in range(overlap):
+		for i in range(height):
 			for j in range(width):
 				# use refPatch if 1; chosenPatch if 0
 				if pathMask[i][j] == 1:

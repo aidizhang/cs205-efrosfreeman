@@ -119,7 +119,8 @@ def parallelPastePatch(texture, patches, initialPatch, metadata):
 
 if __name__ == "__main__":
 	# read in original image using Python Image Library (PIL)
-	orig_img = Image.open("basket.png")
+	image_name = "pebbles"
+	orig_img = Image.open(image_name + ".png")
 	(width, height) = orig_img.size
 
 	# extract list of pixels in RGB/grayscale format
@@ -176,6 +177,6 @@ if __name__ == "__main__":
 	pixels_out = map(lambda x: (x[0], x[1], x[2]), pixels_out)
 	img_out = Image.new(orig_img.mode, textureSize)
 	img_out.putdata(pixels_out)
-	# TODO save img_out
+	img_out.save(image_name + "_generated_" + patchSize + ".png", "png")
 	img_out.show()
 	print "\ndonedonedone!\n"

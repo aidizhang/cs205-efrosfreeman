@@ -130,7 +130,7 @@ cpdef void pastePatch(int textureWidth, int textureHeight, int tileSize,
 			for i in range(overlap):
 				for j in range(overlap):
 					# bitwise or
-					pathMaskBoth[i,j] = 1 - ((1-pathCostsUp[i,j]) * (1-pathCostsLeft[i,j]))
+					pathMaskBoth[i,j] = 1 - ((1 - pathCostsUp[i, j]) * (1 - pathCostsLeft[i, j]))
 
 			pathCostsLeft[:overlap,:] = pathMaskBoth
 			pathCostsUp[:,:overlap] = pathMaskBoth
@@ -494,6 +494,7 @@ cdef void cheapHorizPath(FLOAT[:,:] costMap, INT[:,:] pathCosts) nogil:
 cheap_horiz_cut(cost_map, path_costs)
 	same as vertical version, transposed
 '''
+# TODO still thing this is wrong... doesn't look like serial numpy implementation
 cdef void cheapHorizCut(FLOAT[:,:] costMap, INT[:,:] pathCosts) nogil:
 	cdef:
 		int row

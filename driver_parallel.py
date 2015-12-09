@@ -177,6 +177,6 @@ if __name__ == "__main__":
 	pixels_out = map(lambda x: (x[0], x[1], x[2]), pixels_out)
 	img_out = Image.new(orig_img.mode, textureSize)
 	img_out.putdata(pixels_out)
-	img_out.save(image_name + "_generated_" + patchSize + ".png", "png")
+	img_out.save(image_name + "_generated_" + str(patchSize) + ".png", "png")
 	img_out.show()
 	print "\ndonedonedone!\n"

@@ -26,8 +26,6 @@ import threading
 
 from quilting_parallel import *
 
-# TODO: look at Liang paper
-
 
 '''
 schedule_paste_patch(texture, patches, initialPatch, metadata, tid, num_threads, events)
@@ -181,4 +179,4 @@ if __name__ == "__main__":
 	img_out.putdata(pixels_out)
 	img_out.save(image_name + "_generated_" + str(patchSize) + ".png", "png")
 	img_out.show()
-	print "\ndonedonedone!\n"
+	print "\nDone!\n"

@@ -141,7 +141,10 @@ cpdef void pastePatch(int textureWidth, int textureHeight, int tileSize,
 
 		insert(texture, chosenPatch, row_off, col_off)
 
-# TODO: is this really necessary? just use python min in nogil
+'''
+int_min(a, b)
+	returns the minimum of the integers a and b
+'''
 cdef inline int int_min(int a, int b) nogil: 
 	return a if a <= b else b
 
@@ -379,16 +382,19 @@ cdef void pathBacktrace(FLOAT[:,:] cumuCosts, INT[:,:] pathCosts) nogil:
 		pathCosts[row, idx] = 1
 
 		# TODO functional programming
-		# reset minIdx and maxIdx
-		if idx - 1 > 0:
-			minIdx = idx - 1
-		else:
-			minidx = 0
+		# reset minIdx and maxIdx so that they don't go out of bounds
+		minIdx = idx - 1 if idx - 1 > 0 else 0
+		maxIdx = int_min(idx + 1, x - 1)
+		#if idx - 1 > 0:
+		#	minIdx = idx - 1
+		#else:
+		#	minidx = 0
 
-		if idx + 1 < x - 1:
-			maxIdx = idx + 1
-		else:
-			maxIdx = x - 1
+
+		#if idx + 1 < x - 1:
+		#	maxIdx = idx + 1
+		#else:
+		#	maxIdx = x - 1
 
 
 '''

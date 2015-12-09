@@ -116,7 +116,7 @@ def parallelPastePatch(texture, patches, initialPatch, metadata):
 
 if __name__ == "__main__":
 	# read in original image using Python Image Library (PIL)
-	orig_img = Image.open("basket.png")
+	orig_img = Image.open("pebbles.png")
 	(width, height) = orig_img.size
 
 	# extract list of pixels in RGB/grayscale format

@@ -20,6 +20,7 @@ from libc.math cimport sqrt
 from libc.stdlib cimport rand, malloc, free
 from libc.stdint cimport uintptr_t
 
+# TODO pretty sure these are unnecessary
 # import math
 # import sys
 # import os
@@ -32,7 +33,14 @@ from libc.stdint cimport uintptr_t
 ctypedef np.float32_t FLOAT
 ctypedef np.int32_t INT
 
-
+'''
+paste_patch(texture_width, texture_height, tile_size, overlap,
+			num_rows, num_cols, tid, np_texture, patches, initial_patch)
+	inserts a new patch into the generated texture:
+		1) select randomly from candidate patches
+		2) calculate min error boundary
+		3) patches into output texture
+'''
 cpdef void pastePatch(int textureWidth, int textureHeight, int tileSize,
 					  int overlap, int numRows, int numCols, int tid,
 					  FLOAT[:,:,:] np_texture, FLOAT[:,:,:,:] patches,
@@ -120,6 +128,7 @@ cpdef void pastePatch(int textureWidth, int textureHeight, int tileSize,
 			cheapHorizCut(costMapUp, pathCostsUp)
 			combineRefAndChosen(pathCostsUp, refPatchUp, chosenPatch, 1, overlap)
 
+		# TODO: is this even necessary, given how we're doing combineRefAndChosen?
 		if blockLeft and blockUp:
 			for i in range(overlap):
 				for j in range(overlap):
@@ -384,17 +393,17 @@ cdef void calcMinCostsHoriz(FLOAT[:,:] costMap) nogil:
 		# TODO does this copy or reference? - this needs to be a copy
 		# FLOAT[:,:] cumuCosts = costMap
 		# TODO: maybe try this: FLOAT[:,:] cumuCosts = costMap[:,:]
-		int x = costMap.shape[1] # row
-		int y = costMap.shape[0] # column
+		int x = costMap.shape[1] # column
+		int y = costMap.shape[0] # row
 		FLOAT minVal
 		int i, j
 
-	for i in range(y - 1): # column up to and including the penultimate column
-		for j in range(x): # row
+	for i in range(x - 1): # column up to and including the penultimate column
+		for j in range(y): # row
 			minVal = 99999.
 			if j != 0 and minVal > costMap[j-1,i]: # costMap always indexes row then column
 				minVal = costMap[j-1,i]
-			if j != x - 1 and minVal > costMap[j+1,i]:
+			if j != y - 1 and minVal > costMap[j+1,i]:
 				minVal = costMap[j+1,i]
 			if minVal > costMap[j,i]:
 				minVal = costMap[j,i]
@@ -407,16 +416,16 @@ Trace DP shit backwards, yo; "returning" pathCosts
 '''
 cdef void pathBacktraceHoriz(FLOAT[:,:] cumuCosts, INT[:,:] pathCosts) nogil:
 	cdef:
-		int x = cumuCosts.shape[0] # row
-		int y = cumuCosts.shape[1] # column
+		int x = cumuCosts.shape[1] # column
+		int y = cumuCosts.shape[0] # row
 		int minIdx, maxIdx, row, i, idx
 		FLOAT minVal
 
 	pathCosts[:,:] = 0
 
 	minIdx = 0
-	maxIdx = x - 1
-	for col in range(y - 1, -1, -1):
+	maxIdx = y - 1
+	for col in range(x - 1, -1, -1):
 		minVal = 999999.
 		idx = 0
 		# find index of minimum value in row (idx = np.argmin(cumuCosts[row, minIdx:maxIdx + 1])
@@ -451,8 +460,8 @@ Generate binary mask
 cdef void cheapHorizCut(FLOAT[:,:] costMap, INT[:,:] pathCosts) nogil:
 	cdef:
 		int row
-		int x = pathCosts.shape[0]
-		int y = pathCosts.shape[1]
+		int x = pathCosts.shape[1]
+		int y = pathCosts.shape[0]
 
 	# fills in pathCosts with a path of 1's
 	cheapHorizPath(costMap, pathCosts)
@@ -460,8 +469,8 @@ cdef void cheapHorizCut(FLOAT[:,:] costMap, INT[:,:] pathCosts) nogil:
 	# fills in every single entry to the left of path with 1's
 	for row in range(x):
 		for col in range(y):
-			if pathCosts[row, col] == 0:
-				pathCosts[row, col] = 1
+			if pathCosts[col, row] == 0:
+				pathCosts[col, row] = 1
 			else:
 				break
 

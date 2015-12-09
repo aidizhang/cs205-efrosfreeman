@@ -63,7 +63,6 @@ cpdef void pastePatch(int textureWidth, int textureHeight, int tileSize, int ove
 		INT[:,:] pathMaskBoth = np_pathMaskBoth
 		FLOAT[:,:] costMapLeft = np_costMapLeft
 		FLOAT[:,:] costMapUp = np_costMapUp
-		# why do we have to make a memory view on something we're passing in?
 		FLOAT[:,:,:] texture = np_texture
 		FLOAT[:,:,:] refPatchLeft, refPatchUp, refPatchBoth
 		FLOAT[:,:,:] chosenPatch
@@ -77,7 +76,7 @@ cpdef void pastePatch(int textureWidth, int textureHeight, int tileSize, int ove
 			refPatchLeft = texture[rowNo*tileSize:int_min(rowNo*tileSize + patchSize, textureHeight), 
 							colNo*tileSize:int_min(colNo*tileSize + overlap, textureWidth), :]
 			overlapDistances(refPatchLeft, patches, distances, distLeft)
-			# reference or actual copy if d = distLeft + distUp - distBoth didn't work
+			# alias
 			d = distLeft
 
 		if blockUp:
@@ -136,6 +135,7 @@ This function computes the distance of refPatch to all patches in patches, retur
 Returns 1-D array of distances over all patches.
 '''
 # TODO: should make contiguous?
+# TODO: need distances
 cdef void overlapDistances(FLOAT[:,:,:] refPatch,
 					   FLOAT[:,:,:,:] patches,
 					   FLOAT[:,:,:,:] distances,
@@ -226,7 +226,7 @@ cdef int getMatchingPatch(FLOAT[:] distances, float thresholdFactor, int tid) no
 
 	cdef:
 		float threshold = thresholdFactor * minVal
-		# int ctr = 0
+		int ctr = 0
 
 	# choose random index such that the distance is within threshold factor of minimum distance
 	# TODO: make default thresholdFactor
@@ -235,37 +235,36 @@ cdef int getMatchingPatch(FLOAT[:] distances, float thresholdFactor, int tid) no
 	# count number of qualifying indices to allocate memory for indices
 	for i in range(numPatches):
 		if d[i] < threshold:
-			return i
-			# ctr += 1
+			# return i
+			ctr += 1
 
 	# with gil:
 	# 	print "counter = number of qualifying indices: %i" % ctr
 
-	# cdef:
-	# 	int* indices = <int*> malloc(ctr * sizeof(int))
-	# 	int temp = ctr
+	cdef:
+		int* indices = <int *> malloc(ctr * sizeof(int))
+		int temp = ctr
 
-	# # store all qualifying indices of d in indices
-	# for i in range(numPatches):
-	# 	if d[i] < threshold:
-	# 		indices[temp - 1] = i
-	# 		temp -= 1
-	# 		if temp == 0:
-	# 			break
+	# store all qualifying indices of d in indices
+	for i in range(numPatches):
+		if d[i] < threshold:
+			indices[temp - 1] = i
+			temp -= 1
+			if temp == 0:
+				break
 	
-	# cdef:
-	# 	int r = rand() # gives random number from 0 to RAND_MAX
-	# 	int idx = r/ctr
-	# 	int patchIdx = indices[idx]
+	cdef:
+		int r = rand() # gives random number from 0 to RAND_MAX
+		# TODO non-uniform
+		int idx = r % ctr
+		int patchIdx = indices[idx]
 
-	# free(indices)
+	free(indices)
 
 	with gil:
 		print "finished finding matching patch for thread %i" % tid
 
-	# return patchIdx
-	
-	# return 0
+	return patchIdx
 
 '''
 This function inserts a patch into img at position (i,j).

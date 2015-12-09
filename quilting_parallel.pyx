@@ -127,17 +127,17 @@ cpdef void pastePatch(int textureWidth, int textureHeight, int tileSize,
 			combineRefAndChosen(pathCostsUp, refPatchUp, chosenPatch, 1, overlap)
 
 		# TODO: is this even necessary, given how we're doing combineRefAndChosen?
-		if blockLeft and blockUp:
-			for i in range(overlap):
-				for j in range(overlap):
-					# bitwise or
-					pathMaskBoth[i,j] = 1 - ((1 - pathCostsUp[i, j]) * (1 - pathCostsLeft[i, j]))
+		#if blockLeft and blockUp:
+		#	for i in range(overlap):
+		#		for j in range(overlap):
+		#			# bitwise or
+		#			pathMaskBoth[i,j] = 1 - ((1 - pathCostsUp[i, j]) * (1 - pathCostsLeft[i, j]))
 
-			pathCostsLeft[:overlap,:] = pathMaskBoth
-			pathCostsUp[:,:overlap] = pathMaskBoth
+		#	pathCostsLeft[:overlap,:] = pathMaskBoth
+		#	pathCostsUp[:,:overlap] = pathMaskBoth
 
-			combineRefAndChosen(pathCostsLeft, refPatchLeft, chosenPatch, 0, overlap)
-			combineRefAndChosen(pathCostsUp, refPatchUp, chosenPatch, 1, overlap)
+		#	combineRefAndChosen(pathCostsLeft, refPatchLeft, chosenPatch, 0, overlap)
+		#	combineRefAndChosen(pathCostsUp, refPatchUp, chosenPatch, 1, overlap)
 
 		insert(texture, chosenPatch, row_off, col_off)
 
@@ -381,20 +381,9 @@ cdef void pathBacktrace(FLOAT[:,:] cumuCosts, INT[:,:] pathCosts) nogil:
 				idx = i
 		pathCosts[row, idx] = 1
 
-		# TODO functional programming
 		# reset minIdx and maxIdx so that they don't go out of bounds
 		minIdx = idx - 1 if idx - 1 > 0 else 0
 		maxIdx = int_min(idx + 1, x - 1)
-		#if idx - 1 > 0:
-		#	minIdx = idx - 1
-		#else:
-		#	minidx = 0
-
-
-		#if idx + 1 < x - 1:
-		#	maxIdx = idx + 1
-		#else:
-		#	maxIdx = x - 1
 
 
 '''
@@ -504,7 +493,6 @@ cdef void cheapHorizPath(FLOAT[:,:] costMap, INT[:,:] pathCosts) nogil:
 cheap_horiz_cut(cost_map, path_costs)
 	same as vertical version, transposed
 '''
-# TODO still thing this is wrong... doesn't look like serial numpy implementation
 cdef void cheapHorizCut(FLOAT[:,:] costMap, INT[:,:] pathCosts) nogil:
 	cdef:
 		int row

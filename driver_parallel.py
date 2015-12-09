@@ -28,6 +28,7 @@ from quilting_parallel import *
 
 # TODO: look at Liang paper
 
+
 '''
 schedule_paste_patch(texture, patches, initialPatch, metadata, tid, num_threads, events)
 	controls the scheduling of threads to select patches, calculate error boundary,
@@ -90,6 +91,7 @@ def schedulePastePatch(texture, patches, initialPatch, metadata, tid, num_thread
 	# mark patch as done!
 	events[tid].set()
 
+
 '''
 parallel_paste_patch(texture, patches, initialPatch, metadata)
 	spawns threads, one for each patch to be inserted into the generated texture
@@ -114,9 +116,10 @@ def parallelPastePatch(texture, patches, initialPatch, metadata):
 
 	return texture
 
+
 if __name__ == "__main__":
 	# read in original image using Python Image Library (PIL)
-	orig_img = Image.open("pebbles.png")
+	orig_img = Image.open("basket.png")
 	(width, height) = orig_img.size
 
 	# extract list of pixels in RGB/grayscale format
@@ -151,8 +154,8 @@ if __name__ == "__main__":
 	texture = np.zeros((texture_height, texture_width, 3), dtype=np.float32)
 	
 	# dimensions of patch grid needed to generated texture
-	N = int(math.ceil(textureSize[0]/float(tileSize)))
-	M = int(math.ceil(textureSize[1]/float(tileSize)))
+	N = int(math.ceil(texture_width / float(tileSize)))
+	M = int(math.ceil(texture_height / float(tileSize)))
 
 	# create metadata for patch synthesis
 	metadata = {'textureWidth':textureSize[0],
@@ -170,7 +173,7 @@ if __name__ == "__main__":
 
 	# convert texture into flattened array pixels_out for exporting as PNG
 	pixels_out = np.reshape(texture, (texture_width * texture_height, 3), order='C')
-	pixels_out = map(lambda x: (x[0],x[1],x[2]), pixels_out)
+	pixels_out = map(lambda x: (x[0], x[1], x[2]), pixels_out)
 	img_out = Image.new(orig_img.mode, textureSize)
 	img_out.putdata(pixels_out)
 	# TODO save img_out

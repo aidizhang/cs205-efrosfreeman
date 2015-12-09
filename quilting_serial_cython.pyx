@@ -3,18 +3,8 @@
 cimport numpy as np
 import numpy as np
 cimport cython
-from cython.parallel import parallel, prange
 from libc.math cimport sqrt
 from libc.stdlib cimport rand, malloc, free
-from libc.stdint cimport uintptr_t
-
-import math
-import sys
-import os
-import itertools
-import random
-
-from PIL import Image
 
 # numpy types
 # TODO need all?
@@ -41,8 +31,7 @@ cpdef void overlapDistances(FLOAT[:,:,:] refPatch,
 		int i, j, k, p
 	
 	# calculate distances of refPatch from patches
-	# TODO: try load balancing with chunksize
-	for i in prange(numPatches, num_threads=8, schedule='dynamic'):
+	for i in range(numPatches):
 		for j in range(refPatch.shape[0]):
 			for k in range(refPatch.shape[1]):
 				results[i] += sqrt((patches[i,j,k,0]-refPatch[j,k,0])**2 + (patches[i,j,k,1]-refPatch[j,k,1])**2 + (patches[i,j,k,2]-refPatch[j,k,2])**2)

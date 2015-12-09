@@ -39,7 +39,7 @@ overlap_distances(ref_patch, patches, results)
 	computes the L2 norm distance of ref_patch to each patch in patches
 	stores total distance of each patch in results
 '''
-cdef void overlap_distances(FLOAT[:,:,:] ref_patch,
+cpdef void overlap_distances(FLOAT[:,:,:] ref_patch,
 					   FLOAT[:,:,:,:] patches,
 					   FLOAT[:] results) nogil:
 	cdef:
@@ -62,7 +62,7 @@ combine_ref_chosen(path_mask, ref_patch, chosen_patch)
 	using path_mask, copies pixels from ref_patch to chosen_path
 	direction of iteration depends on dir: 0 for vertical overlap, 1 for horizontal
 '''
-cdef void combine_ref_chosen(INT[:,:] path_mask, 
+cpdef void combine_ref_chosen(INT[:,:] path_mask, 
 						FLOAT[:,:,:] ref_patch, 
 						FLOAT[:,:,:] chosen_patch) nogil:
 	cdef:
@@ -108,7 +108,7 @@ get_matching_patch(distances, threshold_factor)
 	randomly selected from the set of patches with error within threshold_factor
 	of the smallest error in distances (not including the exact matching patch)
 '''
-cdef int get_matching_patch(FLOAT[:] distances, float threshold_factor) nogil:
+cpdef int get_matching_patch(FLOAT[:] distances, float threshold_factor) nogil:
 	cdef:
 		FLOAT[:] d = distances
 		int num_patches = distances.shape[0]
@@ -177,7 +177,7 @@ make_cost_map(img1, img2, cost_map)
 	computes error pixel-wise by L2 norm and stores in cost_map
 	img1 and img2 should have the same shape, and have 3 channels (RGB)
 '''
-cdef void make_cost_map(FLOAT[:,:,:] img1, FLOAT[:,:,:] img2, FLOAT[:,:] cost_map) nogil:
+cpdef void make_cost_map(FLOAT[:,:,:] img1, FLOAT[:,:,:] img2, FLOAT[:,:] cost_map) nogil:
 	cdef:
 		int i,j
 		int height = int_min(img1.shape[0], img2.shape[0])
@@ -277,7 +277,7 @@ cheap_vert_cut(cost_map, path_costs)
 	creates a binary mask by setting everything to the left of the path
 	to 1, signifying that those should be pixels from the existing texture
 '''
-cdef void cheap_vert_cut(FLOAT[:,:] cost_map, INT[:,:] path_costs) nogil:
+cpdef void cheap_vert_cut(FLOAT[:,:] cost_map, INT[:,:] path_costs) nogil:
 	cdef:
 		int row
 		int x = path_costs.shape[1]
@@ -360,7 +360,7 @@ cdef void cheap_horiz_path(FLOAT[:,:] cost_map, INT[:,:] path_costs) nogil:
 cheap_horiz_cut(cost_map, path_costs)
 	same as vertical version, transposed
 '''
-cdef void cheap_horiz_cut(FLOAT[:,:] cost_map, INT[:,:] path_costs) nogil:
+cpdef void cheap_horiz_cut(FLOAT[:,:] cost_map, INT[:,:] path_costs) nogil:
 	cdef:
 		int row
 		int x = path_costs.shape[1]

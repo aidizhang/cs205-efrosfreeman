@@ -20,9 +20,10 @@ from PIL import Image
 import pyximport
 pyximport.install(setup_args={"include_dirs":np.get_include()}, reload_support=True)
 
+import math
 import random
 
-from quilting_parallel import *
+from quilting_serial_cython import *
 
 
 if __name__ == "__main__":
@@ -96,20 +97,20 @@ if __name__ == "__main__":
 				# TODO does using python min affect performance enough?
 				ref_patch_left = texture[row_off:min(row_off + patch_size, texture_height), 
 										 col_off:min(col_off + overlap, texture_width), :]
-				overlap_distances(ref_patch_left, patches, distances, dist_left)
+				overlap_distances(ref_patch_left, patches, dist_left)
 				# reference or actual copy if d = dist_left + dist_up - dist_both didn't work
 				d = dist_left
 
 			if block_up:
 				ref_patch_up = texture[row_off:min(row_off + overlap, texture_height), 
 									   col_off:min(col_off + patch_size, texture_width), :]
-				overlap_distances(ref_patch_up, patches, distances, dist_up)
+				overlap_distances(ref_patch_up, patches, dist_up)
 				d = dist_up
 
 			if block_left and block_up:
 				ref_patch_both = texture[row_off:min(row_off + overlap, texture_height), 
 										 col_off:min(col_off + overlap, texture_width), :]
-				overlap_distances(ref_patch_both, patches, distances, dist_both)
+				overlap_distances(ref_patch_both, patches, dist_both)
 				for i in range(num_patches):
 					d[i] = dist_left[i] + dist_up[i] - dist_both[i]
 

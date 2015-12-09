@@ -149,15 +149,7 @@ cdef void overlapDistances(FLOAT[:,:,:] refPatch,
 	for i in prange(numPatches, num_threads=8, schedule='dynamic'):
 		for j in range(refPatch.shape[0]):
 			for k in range(refPatch.shape[1]):
-				# TODO: combine both pranges!
-				for p in range(3): # num channels
-					distances[i,j,k,p] = patches[i,j,k,p] - refPatch[j,k,p]
-
-	#calculate L2 norm and sum over all reference patch pixels
-	for i in prange(numPatches, num_threads=8, schedule='dynamic'):
-		for j in range(refPatch.shape[0]):
-			for k in range(refPatch.shape[1]):
-				results[i] += sqrt(distances[i,j,k,0]**2 + distances[i,j,k,1]**2 + distances[i,j,k,2]**2)
+				results[i] += sqrt((patches[i,j,k,0]-refPatch[j,k,0])**2 + (patches[i,j,k,1]-refPatch[j,k,1])**2 + (patches[i,j,k,2]-refPatch[j,k,2])**2)
 
 
 cdef void combineRefAndChosen(INT[:,:] pathMask, 

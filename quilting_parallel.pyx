@@ -478,10 +478,10 @@ cdef void pathBacktraceHoriz(FLOAT[:,:] cumuCosts, INT[:,:] pathCosts) nogil:
 		else:
 			minidx = 0
 
-		if idx + 1 < x - 1:
+		if idx + 1 < y - 1:
 			maxIdx = idx + 1
 		else:
-			maxIdx = x - 1
+			maxIdx = y - 1
 
 
 '''

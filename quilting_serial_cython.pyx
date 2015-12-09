@@ -385,23 +385,3 @@ cpdef void cheapHorizCut(FLOAT[:,:] costMap, INT[:,:] pathCosts, int tid) nogil:
 	with gil:
 		print "finished cheap horiz cut for thread %i" % tid
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-

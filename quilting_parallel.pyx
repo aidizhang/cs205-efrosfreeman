@@ -53,11 +53,11 @@ cpdef void pastePatch(int textureWidth, int textureHeight, int tileSize,
 	np_distUp = np.zeros(patches.shape[0], dtype=np.float32)
 	np_distBoth = np.zeros(patches.shape[0], dtype=np.float32)
 	np_distances = np.empty_like(patches, dtype=np.float32)
-	np_pathCostsLeft = np.zeros((tileSize, overlap), dtype=np.int32)
-	np_pathCostsUp = np.zeros((overlap, tileSize), dtype=np.int32)
+	np_pathCostsLeft = np.zeros((patchSize, overlap), dtype=np.int32)
+	np_pathCostsUp = np.zeros((overlap, patchSize), dtype=np.int32)
 	np_pathMaskBoth = np.zeros((overlap, overlap), dtype=np.int32)
-	np_costMapLeft = np.zeros((tileSize, overlap), dtype=np.float32)
-	np_costMapUp = np.zeros((overlap, tileSize), dtype=np.float32)
+	np_costMapLeft = np.zeros((patchSize, overlap), dtype=np.float32)
+	np_costMapUp = np.zeros((overlap, patchSize), dtype=np.float32)
 
 	cdef:
 		# typed MemoryViews on the numpy arrays
@@ -302,15 +302,18 @@ make_cost_map(img1, img2, cost_map)
 cdef void makeCostMap(FLOAT[:,:,:] img1, FLOAT[:,:,:] img2, FLOAT[:,:] costMap) nogil:
 	cdef:
 		int i,j
-		int height = img1.shape[0]
-		int width = img1.shape[1]
+		int height = int_min(img1.shape[0], img2.shape[0])
+		int width = int_min(img1.shape[1], img2.shape[1])
+
+	# default error for the partial cost maps
+	costMap[:,:] = 999999.
 
 	# calculate L2 norm distances of refPatch from patches
 	for i in range(height):
 		for j in range(width):
 				costMap[i, j] = sqrt((img1[i, j, 0] - img2[i, j, 0])**2 + \
 									 (img1[i, j, 1] - img2[i, j, 1])**2 + \
-									 (img1[i,j,2] - img2[i,j,2])**2)
+									 (img1[i, j, 2] - img2[i, j, 2])**2)
 
 
 '''

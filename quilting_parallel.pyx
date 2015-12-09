@@ -118,26 +118,13 @@ cpdef void pastePatch(int textureWidth, int textureHeight, int tileSize,
 			makeCostMap(refPatchLeft, chosenPatch[:refPatchLeft.shape[0], :overlap, :],
 						costMapLeft)
 			cheapVertCut(costMapLeft, pathCostsLeft)
-			combineRefAndChosen(pathCostsLeft, refPatchLeft, chosenPatch, 0, overlap)
+			combineRefAndChosen(pathCostsLeft, refPatchLeft, chosenPatch)
 
 		if blockUp:
 			makeCostMap(refPatchUp, chosenPatch[:overlap, :refPatchUp.shape[1], :],
 						costMapUp)
 			cheapHorizCut(costMapUp, pathCostsUp)
-			combineRefAndChosen(pathCostsUp, refPatchUp, chosenPatch, 1, overlap)
-
-		# TODO: is this even necessary, given how we're doing combineRefAndChosen?
-		#if blockLeft and blockUp:
-		#	for i in range(overlap):
-		#		for j in range(overlap):
-		#			# bitwise or
-		#			pathMaskBoth[i,j] = 1 - ((1 - pathCostsUp[i, j]) * (1 - pathCostsLeft[i, j]))
-
-		#	pathCostsLeft[:overlap,:] = pathMaskBoth
-		#	pathCostsUp[:,:overlap] = pathMaskBoth
-
-		#	combineRefAndChosen(pathCostsLeft, refPatchLeft, chosenPatch, 0, overlap)
-		#	combineRefAndChosen(pathCostsUp, refPatchUp, chosenPatch, 1, overlap)
+			combineRefAndChosen(pathCostsUp, refPatchUp, chosenPatch)
 
 		insert(texture, chosenPatch, row_off, col_off)
 
@@ -175,31 +162,22 @@ cdef void overlapDistances(FLOAT[:,:,:] refPatch,
 
 
 '''
-combine_ref_chosen(path_mask, ref_patch, chosen_patch, dir, overlap)
+combine_ref_chosen(path_mask, ref_patch, chosen_patch)
 	using path_mask, copies pixels from ref_patch to chosen_path
 	direction of iteration depends on dir: 0 for vertical overlap, 1 for horizontal
 '''
 cdef void combineRefAndChosen(INT[:,:] pathMask, 
 						FLOAT[:,:,:] refPatch, 
-						FLOAT[:,:,:] chosenPatch, 
-						int dir,
-						int overlap) nogil:
+						FLOAT[:,:,:] chosenPatch) nogil:
 	cdef:
 		int width = refPatch.shape[1]
 		int height = refPatch.shape[0]
 
-	if dir == 0:
-		for i in range(height):
-			for j in range(width):
-				# use refPatch if 1; chosenPatch if 0
-				if pathMask[i][j] == 1:
-					chosenPatch[i][j] = refPatch[i][j]
-	else:
-		for i in range(height):
-			for j in range(width):
-				# use refPatch if 1; chosenPatch if 0
-				if pathMask[i][j] == 1:
-					chosenPatch[i][j] = refPatch[i][j]
+	for i in range(height):
+		for j in range(width):
+			# use refPatch if 1; chosenPatch if 0
+			if pathMask[i][j] == 1:
+				chosenPatch[i][j] = refPatch[i][j]
 
 
 '''

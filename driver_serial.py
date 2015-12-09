@@ -154,7 +154,7 @@ if __name__ == "__main__":
 	print "Starting..."
 
 	# read in original image using Python Image Library (PIL)
-	orig_img = Image.open("text.png")
+	orig_img = Image.open("basket.png")
 	(width, height) = orig_img.size
 
 	vertScaleFactor = 2
@@ -267,7 +267,7 @@ if __name__ == "__main__":
 	pixels_out = map(lambda x: (x[0],x[1],x[2]), pixels_out)
 	img_out = Image.new(orig_img.mode, textureSize)
 	img_out.putdata(pixels_out)
-	# img_out.save("text_generated_30.png", "png")
+	img_out.save("basket_generated_30.png", "png")
 	img_out.show()
 
 	print "donedonedone!"

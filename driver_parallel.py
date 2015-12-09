@@ -13,11 +13,16 @@ from quilting_parallel import *
 
 # TODO: look at Liang paper
 
-def schedulePastePatch(texture, patches, initialPatch, metadata, tid, num_threads):
+def schedulePastePatch(texture, patches, initialPatch, metadata, tid, num_threads, events):
 	numRows, numCols = metadata['numRows'], metadata['numCols']
 
+	print "scheduling tid %i:" % tid
+	if tid == 0:
+		print "numCols: %i" % numCols
+		print "numRows: %i" % numRows
 	# for each patch, make sure that left and up patches (if any) are done
 	if tid == 0:
+		events[tid].set()
 		sys.exit(0)
 
 	# if patch is on top boundary of texture
@@ -38,7 +43,7 @@ def schedulePastePatch(texture, patches, initialPatch, metadata, tid, num_thread
 		events[tid - numCols - 1].wait()
 		events[tid - numCols + 1].wait()
 		events[tid - 1].wait()
-
+	print "starting to do work"
 	# do work if ready
 	pastePatch(metadata['textureWidth'],
 			metadata['textureHeight'],
@@ -60,17 +65,18 @@ def parallelPastePatch(texture, patches, initialPatch, metadata):
 	numThreads = metadata['numCols'] * metadata['numRows']
 	events = [threading.Event() for i in range(numThreads)]
 
+	print "spawning threads"
 	# spawn threads
 	threads = []
-	for tid in range(num_threads):
+	for tid in range(numThreads):
 		threads.append(threading.Thread(target=schedulePastePatch, 
-										args=(texture, patches, initialPatch, metadata, tid, numThreads)))
+										args=(texture, patches, initialPatch, metadata, tid, numThreads, events)))
 		threads[tid].start()
-	
+	print "finished spawnining threads"
 	# finish threads
 	for thread in threads:
 		thread.join()
-
+	print "finish threads"
 	return texture
 
 if __name__ == "__main__":
@@ -89,17 +95,19 @@ if __name__ == "__main__":
 	# choose patch from input sample by slicing
 	patchSize = 30
 	sl = (slice(0,patchSize), slice(0,patchSize), slice(0,3))
+
+	# generate all sample patches
+	patches = makePatches(sample_2d, patchSize)
+
 	# TODO: randomly select initial patch
-	initialPatch = sample_2d[sl[0], sl[1], sl[2]]
+	initialPatch = np.zeros((patchSize, patchSize, 3), dtype=np.float32)
+	initialPatch[:,:,:] = patches[0,:,:,:]
 
 	# define textureSize, tileSize and initialize blank canvas
 	textureSize = (width * 2, height * 2)
 	overlap = patchSize / 6
 	tileSize = patchSize - overlap
 	texture = np.zeros((textureSize[1], textureSize[0], 3), dtype=np.float32)
-
-	# generate all sample patches
-	patches = makePatches(sample_2d, patchSize)
 	
 	N = int(math.ceil(textureSize[0]/float(tileSize)))
 	M = int(math.ceil(textureSize[1]/float(tileSize)))
@@ -115,7 +123,7 @@ if __name__ == "__main__":
 	# paste all patches: paste includes 1) selecting from candidate patches, 2) calculating min error boundary
 	# and 3) inserting patches into output texture
 	# TODO: think about whether it should return or remain as void function
-	insert(texture, initialPatch, 0, 0)
+	insert(texture, initialPatch, 0, 0, 0)
 	parallelPastePatch(texture, patches, initialPatch, metadata)
 
 	# convert texture into flattened array pixels_out for exporting as PNG

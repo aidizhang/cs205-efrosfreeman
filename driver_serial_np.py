@@ -29,11 +29,6 @@ if __name__ == "__main__":
 	orig_img = Image.open(image_name + ".png")
 	(width, height) = orig_img.size
 
-	vertScaleFactor = 2
-	horizScaleFactor = 2
-
-	assert vertScaleFactor >= 1 and horizScaleFactor >= 1, "cannot scale down"
-
 	# extract list of pixels in RGB/grayscale format
 	pixels = list(orig_img.getdata())
 	sample_2d = np.array(pixels, np.int32)
@@ -43,23 +38,27 @@ if __name__ == "__main__":
 	assert sample_2d.ndim == 3 and sample_2d.shape[2] == 3, "input sample must be RGB"
 
 	# choose patch from input sample by slicing
-	# TODO hard coded
-	patchSize = 30
-	sl = (slice(0, patchSize), slice(0, patchSize), slice(0, 3))
-	# TODO: randomly select initial patch
-	initialPatch = sample_2d[sl[0], sl[1], sl[2]]
+	patch_size = 30
 
-	# define textureSize, tileSize and initialize blank canvas
-	textureSize = (width * horizScaleFactor, height * vertScaleFactor)
-	overlap = patchSize / 6
-	tileSize = patchSize - overlap
-	texture = np.zeros((textureSize[1], textureSize[0], 3), dtype=np.float32)
+	# define texture_size, tile_size and initialize blank canvas
+	texture_size = (width * 2, height * 2)
+	texture_width = texture_size[0]
+	texture_height = texture_size[1]
+	overlap = patch_size / 6
+	tile_size = patch_size - overlap
+	texture = np.zeros((texture_height, texture_width, 3), dtype=np.float32)
 
 	# generate all sample patches
-	patches = makePatches(sample_2d, patchSize)
+	patches = make_patches(sample_2d, patch_size)
+	num_patches = patches.shape[0]
+
+	# randomly select initial patch
+	initial_patch = np.zeros((patch_size, patch_size, 3), dtype=np.float32)
+	rand_patch = random.randint(0, num_patches - 1)
+	initial_patch[:,:,:] = patches[rand_patch,:,:,:]
 	
-	N = int(math.ceil(textureSize[0] / float(tileSize)))
-	M = int(math.ceil(textureSize[1] / float(tileSize)))
+	N = int(math.ceil(texture_width / float(tile_size)))
+	M = int(math.ceil(texture_height / float(tile_size)))
 	k = -1
 
 	for i in range(M):
@@ -68,80 +67,78 @@ if __name__ == "__main__":
 
 			# insert default initial top-left patch
 			if k == 0:
-				insert(texture, initialPatch, i, j)
+				insert(texture, initial_patch, i, j)
 				continue
 
-			blockLeft = j > 0
-			blockUp = i > 0
+			block_left = j > 0
+			block_up = i > 0
 
 			# find reference patchs and calculate overlap distances over all sample patches
-			if blockLeft:
-				refPatchLeft = texture[i*tileSize:min(i*tileSize + patchSize, textureSize[1]), 
-								j*tileSize:min(j*tileSize + overlap, textureSize[0]), :]
-				distLeft = overlapDistances(refPatchLeft, patches)
-				d = distLeft
+			if block_left:
+				ref_patch_left = texture[i*tile_size:min(i*tile_size + patch_size, texture_height), 
+								j*tile_size:min(j*tile_size + overlap, texture_width), :]
+				dist_left = overlap_distances(ref_patch_left, patches)
+				d = dist_left
 
-			if blockUp:
-				refPatchUp = texture[i*tileSize:min(i*tileSize + overlap, textureSize[1]), 
-								j*tileSize:min(j*tileSize + patchSize, textureSize[0]), :]
-				distUp = overlapDistances(refPatchUp, patches)
-				d = distUp
+			if block_up:
+				ref_patch_up = texture[i*tile_size:min(i*tile_size + overlap, texture_height), 
+								j*tile_size:min(j*tile_size + patch_size, texture_width), :]
+				dist_up = overlap_distances(ref_patch_up, patches)
+				d = dist_up
 
-			if blockLeft and blockUp:
-				refPatchBoth = texture[i*tileSize:min(i*tileSize + overlap, textureSize[1]), 
-								j*tileSize:min(j*tileSize + overlap, textureSize[0]), :]
-				distBoth = overlapDistances(refPatchBoth, patches)
-				d = distLeft + distUp - distBoth
+			if block_left and block_up:
+				ref_patch_both = texture[i*tile_size:min(i*tile_size + overlap, texture_height), 
+								j*tile_size:min(j*tile_size + overlap, texture_width), :]
+				dist_both = overlap_distances(ref_patch_both, patches)
+				d = dist_left + dist_up - dist_both
 
 			# finds appropriate random patch
-			chosenIdx = getMatchingPatch(d, 1.1)
-			chosenPatch = patches[chosenIdx, :, :, :]
+			chosen_idx = get_matching_patch(d, 1.1)
+			chosen_patch = patches[chosen_idx, :, :, :]
 
-			if blockLeft:
-				costMap = makeCostMap(refPatchLeft, chosenPatch[:refPatchLeft.shape[0], :overlap, :])
-				pathMaskLeft = cheapVertCut(costMap)
-				overlapLeft = np.where(np.dstack([pathMaskLeft] * 3), refPatchLeft,
-									   chosenPatch[:refPatchLeft.shape[0], :overlap, :])
+			if block_left:
+				cost_map = make_cost_map(ref_patch_left, chosen_patch[:ref_patch_left.shape[0], :overlap, :])
+				path_mask_left = cheap_vert_cut(cost_map)
+				overlap_left = np.where(np.dstack([path_mask_left] * 3), ref_patch_left,
+									   			chosen_patch[:ref_patch_left.shape[0], :overlap, :])
 				# overwrite with min cut
-				chosenPatch[:refPatchLeft.shape[0], :overlap, :] = overlapLeft
+				chosen_patch[:ref_patch_left.shape[0], :overlap, :] = overlap_left
 
-			if blockUp:
-				# chosenSize = min(j*tileSize + patchSize, textureSize[0]) - j*tileSize
-				# TODO: stupid solution; find better one
-				costMap = makeCostMap(refPatchUp, chosenPatch[:overlap, :refPatchUp.shape[1], :])
-				pathMaskUp = cheapHorizCut(costMap)
-				overlapUp = np.where(np.dstack([pathMaskUp] * 3), refPatchUp,
-									 chosenPatch[:overlap, :refPatchUp.shape[1], :])
+			if block_up:
+				cost_map = make_cost_map(ref_patch_up, chosen_patch[:overlap, :ref_patch_up.shape[1], :])
+				path_mask_up = cheap_horiz_cut(cost_map)
+				overlap_up = np.where(np.dstack([path_mask_up] * 3), ref_patch_up,
+										chosen_patch[:overlap, :ref_patch_up.shape[1], :])
 				# overwrite with min cut
-				chosenPatch[:overlap, :refPatchUp.shape[1], :] = overlapUp
+				chosen_patch[:overlap, :ref_patch_up.shape[1], :] = overlap_up
 
-			if blockLeft and blockUp:
-				pathMaskBoth = np.zeros((refPatchUp.shape[0], refPatchLeft.shape[1]))
-				for p in range(refPatchUp.shape[0]):
-					for q in range(refPatchLeft.shape[1]):
-						pathMaskBoth[p][q] = 1 - ((1 - pathMaskUp[p, q]) * (1 - pathMaskLeft[p, q]))
+			if block_left and block_up:
+				path_mask_both = np.zeros((ref_patch_up.shape[0], ref_patch_left.shape[1]))
+				for p in range(ref_patch_up.shape[0]):
+					for q in range(ref_patch_left.shape[1]):
+						path_mask_both[p][q] = 1 - ((1 - path_mask_up[p, q]) * (1 - path_mask_left[p, q]))
 
-				pathMaskLeft[:pathMaskBoth.shape[0], :] = pathMaskBoth
-				pathMaskUp[:,:pathMaskBoth.shape[1]] = pathMaskBoth
+				path_mask_left[:path_mask_both.shape[0], :] = path_mask_both
+				path_mask_up[:,:path_mask_both.shape[1]] = path_mask_both
 
-				overlapBothLeft = np.where(np.dstack([pathMaskLeft] * 3), refPatchLeft,
-										   chosenPatch[:refPatchLeft.shape[0], :overlap, :])
-				overlapBothUp = np.where(np.dstack([pathMaskUp] * 3), refPatchUp,
-										 chosenPatch[:overlap, :refPatchUp.shape[1], :])
+				overlap_both_left = np.where(np.dstack([path_mask_left] * 3), ref_patch_left,
+												chosen_patch[:ref_patch_left.shape[0], :overlap, :])
+				overlap_both_up = np.where(np.dstack([path_mask_up] * 3), ref_patch_up,
+												chosen_patch[:overlap, :ref_patch_up.shape[1], :])
 				
 				# overwrite with min cut
-				chosenPatch[:refPatchLeft.shape[0],:overlap,:] = overlapBothLeft
-				chosenPatch[:overlap,:refPatchUp.shape[1],:] = overlapBothUp
+				chosen_patch[:ref_patch_left.shape[0],:overlap,:] = overlap_both_left
+				chosen_patch[:overlap,:ref_patch_up.shape[1],:] = overlap_both_up
 
-			insert(texture, chosenPatch, i * tileSize, j * tileSize)
+			insert(texture, chosen_patch, i * tile_size, j * tile_size)
+			print "Finished patch %i" % k
 
 	# convert texture into flattened array pixels_out for exporting as PNG
-	pixels_out = np.reshape(texture, (textureSize[0] * textureSize[1], 3), order='C')
+	pixels_out = np.reshape(texture, (texture_width * texture_height, 3), order='C')
 	pixels_out = map(lambda x: (x[0], x[1], x[2]), pixels_out)
-	img_out = Image.new(orig_img.mode, textureSize)
+	img_out = Image.new(orig_img.mode, texture_size)
 	img_out.putdata(pixels_out)
-	img_out.save(image_name + "_generated_" + str(patchSize) + ".png", "png")
+	img_out.save(image_name + "_generated_" + str(patch_size) + ".png", "png")
 	img_out.show()
-
-	print "donedonedone!"
+	print "\nDone!\n"
 

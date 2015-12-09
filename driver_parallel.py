@@ -91,6 +91,8 @@ def schedulePastePatch(texture, patches, initialPatch, metadata, tid, num_thread
 	# mark patch as done!
 	events[tid].set()
 
+	print "Finished patch %i" % tid
+
 
 '''
 parallel_paste_patch(texture, patches, initialPatch, metadata)

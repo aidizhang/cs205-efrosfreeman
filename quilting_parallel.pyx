@@ -1,4 +1,4 @@
-#cython: boundscheck=True, wraparound=False
+#cython: boundscheck=False, wraparound=False
 '''
 Helper functions for parallel impementation of the Efros-Freeman image quilting algorithm
 

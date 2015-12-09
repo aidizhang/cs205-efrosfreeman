@@ -52,6 +52,7 @@ cpdef void pastePatch(int textureWidth, int textureHeight, int tileSize,
 		int colNo = tid % numCols
 		int blockLeft, blockUp
 		int patchSize = overlap + tileSize
+		int row_off, col_off
 
 	# numpy arrays to store values made in calculations in cdef nogil functions
 	np_d = np.zeros(patches.shape[0], dtype=np.float32)
@@ -83,26 +84,31 @@ cpdef void pastePatch(int textureWidth, int textureHeight, int tileSize,
 		FLOAT[:,:,:] chosenPatch
 	
 	with nogil:
-		blockLeft = 1 if colNo>0 else 0
-		blockUp = 1 if rowNo>0 else 0
+		blockLeft = 1 if colNo > 0 else 0
+		blockUp = 1 if rowNo > 0 else 0
 		
+		# set offset in row and column, measured in pixels
+		row_off = rowNo * tileSize
+		col_off = colNo * tileSize
+
 		# find reference patchs and calculate overlap distances over all sample patches
 		if blockLeft:
-			refPatchLeft = texture[rowNo*tileSize:int_min(rowNo*tileSize + patchSize, textureHeight), 
-								   colNo*tileSize:int_min(colNo*tileSize + overlap, textureWidth), :]
+			refPatchLeft = texture[row_off:int_min(row_off + patchSize, textureHeight), 
+								   col_off:int_min(col_off + overlap, textureWidth), :]
 			overlapDistances(refPatchLeft, patches, distLeft)
-			# alias
+			# alias to be used if patch bordered on two sides
 			d = distLeft
 
 		if blockUp:
-			refPatchUp = texture[rowNo*tileSize:int_min(rowNo*tileSize + overlap, textureHeight), 
-								 colNo*tileSize:int_min(colNo*tileSize + patchSize, textureWidth), :]
+			refPatchUp = texture[row_off:int_min(row_off + overlap, textureHeight), 
+								 col_off:int_min(col_off + patchSize, textureWidth), :]
 			overlapDistances(refPatchUp, patches, distUp)
+			# alias to be used if patch bordered on two sides
 			d = distUp
 
 		if blockLeft and blockUp:
-			refPatchBoth = texture[rowNo*tileSize:int_min(rowNo*tileSize + overlap, textureHeight), 
-							colNo*tileSize:int_min(colNo*tileSize + overlap, textureWidth), :]
+			refPatchBoth = texture[row_off:int_min(row_off + overlap, textureHeight), 
+							col_off:int_min(col_off + overlap, textureWidth), :]
 			overlapDistances(refPatchBoth, patches, distBoth)
 			# correct for overcounting in distBoth
 			for i in range(numPatches):
@@ -121,8 +127,6 @@ cpdef void pastePatch(int textureWidth, int textureHeight, int tileSize,
 			combineRefAndChosen(pathCostsLeft, refPatchLeft, chosenPatch, 0, overlap)
 
 		if blockUp:
-			# chosenSize = min(colNo*tileSize + patchSize, textureWidth) - colNo*tileSize
-			# TODO: stupid solution; find better one
 			makeCostMap(refPatchUp, chosenPatch[:overlap, :refPatchUp.shape[1], :],
 						costMapUp)
 			cheapHorizCut(costMapUp, pathCostsUp)
@@ -141,7 +145,7 @@ cpdef void pastePatch(int textureWidth, int textureHeight, int tileSize,
 			combineRefAndChosen(pathCostsLeft, refPatchLeft, chosenPatch, 0, overlap)
 			combineRefAndChosen(pathCostsUp, refPatchUp, chosenPatch, 1, overlap)
 
-		insert(texture, chosenPatch, rowNo*tileSize, colNo*tileSize)
+		insert(texture, chosenPatch, row_off, col_off)
 
 # TODO: is this really necessary? just use python min in nogil
 cdef inline int int_min(int a, int b) nogil: 

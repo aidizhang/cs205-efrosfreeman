@@ -1,4 +1,4 @@
-#cython: boundscheck=False, wraparound=False
+#cython: boundscheck=True, wraparound=False
 
 cimport numpy as np
 import numpy as np
@@ -217,33 +217,37 @@ cdef int getMatchingPatch(FLOAT[:] distances, float thresholdFactor, int tid) no
 	'''
 	Given a 1-D array of patch distances, choose matching patch index that is within threshold.
 	'''
-	# cdef:
-	# 	FLOAT[:] d = distances
-	# 	int numPatches = distances.shape[0]
-	# 	int i
-	# 	float minVal
+	with gil:
+		print "started finding matching patch for thread %i" % tid
 
-	# # do not select current patch
-	# minVal = 999999.
-	# for i in range(numPatches):
-	# 	if d[i] < minVal and d[i] > 0.01:
-	# 		minVal = d[i]
+	cdef:
+		FLOAT[:] d = distances
+		int numPatches = distances.shape[0]
+		int i
+		float minVal
 
-	# cdef:
-	# 	float threshold = thresholdFactor * minVal
-	# 	int ctr = 0
+	# do not select current patch
+	minVal = 999999.
+	for i in range(numPatches):
+		if d[i] < minVal and d[i] > 0.01:
+			minVal = d[i]
 
-	# # choose random index such that the distance is within threshold factor of minimum distance
-	# # TODO: make default thresholdFactor
-	# # threshold = thresholdFactor * minVal
+	cdef:
+		float threshold = thresholdFactor * minVal
+		# int ctr = 0
+
+	# choose random index such that the distance is within threshold factor of minimum distance
+	# TODO: make default thresholdFactor
+	# threshold = thresholdFactor * minVal
 	
-	# # count number of qualifying indices to allocate memory for indices
-	# for i in range(numPatches):
-	# 	if d[i] < threshold:
-	# 		ctr += 1
+	# count number of qualifying indices to allocate memory for indices
+	for i in range(numPatches):
+		if d[i] < threshold:
+			return i
+			# ctr += 1
 
-	# # with gil:
-	# # 	print "counter = number of qualifying indices: %i" % ctr
+	# with gil:
+	# 	print "counter = number of qualifying indices: %i" % ctr
 
 	# cdef:
 	# 	int* indices = <int*> malloc(ctr * sizeof(int))
@@ -264,14 +268,12 @@ cdef int getMatchingPatch(FLOAT[:] distances, float thresholdFactor, int tid) no
 
 	# free(indices)
 
-	# with gil:
-	# 	print "found matching patch for thread %i" % tid
+	with gil:
+		print "finished finding matching patch for thread %i" % tid
 
-	# indices = np.where(d < threshold)[0]
-	# idx = indices[np.random.randint(0,len(indices))]
 	# return patchIdx
 	
-	return 0
+	# return 0
 
 '''
 This function inserts a patch into img at position (i,j).

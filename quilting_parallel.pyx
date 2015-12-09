@@ -1,4 +1,16 @@
 #cython: boundscheck=True, wraparound=False
+'''
+Helper functions for parallel impementation of the Efros-Freeman image quilting algorithm
+
+Authors:
+Aidi Zhang
+Samuel Cheng
+
+Harvard CS205, fall 2015
+Course Head: Prof. Thouis (Ray) Jones
+Teaching Fellow: Kevin Chen
+
+'''
 
 cimport numpy as np
 import numpy as np
@@ -17,15 +29,14 @@ import random
 from PIL import Image
 
 # numpy types
-# TODO need all?
 ctypedef np.float32_t FLOAT
-ctypedef np.uint32_t UINT
 ctypedef np.int32_t INT
 
 
-cpdef void pastePatch(int textureWidth, int textureHeight, int tileSize, int overlap, int numRows, int numCols, int tid,
-				  FLOAT[:,:,:] np_texture, FLOAT[:,:,:,:] patches, FLOAT[:,:,:] initialPatch):
-	# TODO: necessary?
+cpdef void pastePatch(int textureWidth, int textureHeight, int tileSize,
+					  int overlap, int numRows, int numCols, int tid,
+					  FLOAT[:,:,:] np_texture, FLOAT[:,:,:,:] patches,
+					  FLOAT[:,:,:] initialPatch):
 	cdef:
 		int i, j, chosenIdx
 		int numPatches = patches.shape[0]
@@ -34,25 +45,20 @@ cpdef void pastePatch(int textureWidth, int textureHeight, int tileSize, int ove
 		int blockLeft, blockUp
 		int patchSize = overlap + tileSize
 
-	print "On iteration %i" % tid
-
-	# TODO: should entire function be nogil since we're doing some work here?
-	# declaring distance arrays
+	# numpy arrays to store values made in calculations in cdef nogil functions
 	np_d = np.zeros(patches.shape[0], dtype=np.float32)
 	np_distLeft = np.zeros(patches.shape[0], dtype=np.float32)
 	np_distUp = np.zeros(patches.shape[0], dtype=np.float32)
 	np_distBoth = np.zeros(patches.shape[0], dtype=np.float32)
-	# TODO: double?
 	np_distances = np.empty_like(patches, dtype=np.float32)
 	np_pathCostsLeft = np.zeros((tileSize, overlap), dtype=np.int32)
 	np_pathCostsUp = np.zeros((overlap, tileSize), dtype=np.int32)
-	# refPatchUp.shape[0], refPatchLeft.shape[1]
 	np_pathMaskBoth = np.zeros((overlap, overlap), dtype=np.int32)
-
 	np_costMapLeft = np.zeros((tileSize, overlap), dtype=np.float32)
 	np_costMapUp = np.zeros((overlap, tileSize), dtype=np.float32)
 
 	cdef:
+		# typed MemoryViews on the numpy arrays
 		FLOAT[:] d = np_d
 		FLOAT[:] distLeft = np_distLeft
 		FLOAT[:] distUp = np_distUp
@@ -64,6 +70,7 @@ cpdef void pastePatch(int textureWidth, int textureHeight, int tileSize, int ove
 		FLOAT[:,:] costMapLeft = np_costMapLeft
 		FLOAT[:,:] costMapUp = np_costMapUp
 		FLOAT[:,:,:] texture = np_texture
+		# MemoryView on slices to be made
 		FLOAT[:,:,:] refPatchLeft, refPatchUp, refPatchBoth
 		FLOAT[:,:,:] chosenPatch
 	
@@ -74,57 +81,58 @@ cpdef void pastePatch(int textureWidth, int textureHeight, int tileSize, int ove
 		# find reference patchs and calculate overlap distances over all sample patches
 		if blockLeft:
 			refPatchLeft = texture[rowNo*tileSize:int_min(rowNo*tileSize + patchSize, textureHeight), 
-							colNo*tileSize:int_min(colNo*tileSize + overlap, textureWidth), :]
-			overlapDistances(refPatchLeft, patches, distances, distLeft)
+								   colNo*tileSize:int_min(colNo*tileSize + overlap, textureWidth), :]
+			overlapDistances(refPatchLeft, patches, distLeft)
 			# alias
 			d = distLeft
 
 		if blockUp:
 			refPatchUp = texture[rowNo*tileSize:int_min(rowNo*tileSize + overlap, textureHeight), 
-							colNo*tileSize:int_min(colNo*tileSize + patchSize, textureWidth), :]
-			overlapDistances(refPatchUp, patches, distances, distUp)
+								 colNo*tileSize:int_min(colNo*tileSize + patchSize, textureWidth), :]
+			overlapDistances(refPatchUp, patches, distUp)
 			d = distUp
 
 		if blockLeft and blockUp:
 			refPatchBoth = texture[rowNo*tileSize:int_min(rowNo*tileSize + overlap, textureHeight), 
 							colNo*tileSize:int_min(colNo*tileSize + overlap, textureWidth), :]
-			overlapDistances(refPatchBoth, patches, distances, distBoth)
-			# cythonized version of: d = distLeft + distUp - distBoth
+			overlapDistances(refPatchBoth, patches, distBoth)
+			# correct for overcounting in distBoth
 			for i in range(numPatches):
 				d[i] = distLeft[i] + distUp[i] - distBoth[i]
 
 		# finds appropriate random patch
-		chosenIdx = getMatchingPatch(d, 1.1, tid)
+		# TODO manually set threshold_factor
+		chosenIdx = getMatchingPatch(d, 1.1)
 		chosenPatch = patches[chosenIdx, :, :, :]
 
 		# determines minimum cut boundary and overlays onto chosen patch
 		if blockLeft:
-			makeCostMap(refPatchLeft, chosenPatch[:refPatchLeft.shape[0], :overlap, :], costMapLeft, tid)
-			cheapVertCut(costMapLeft, pathCostsLeft, tid)
-			# TODO: fix?
-			combineRefAndChosen(pathCostsLeft, refPatchLeft, chosenPatch, 0, overlap, tid)
+			makeCostMap(refPatchLeft, chosenPatch[:refPatchLeft.shape[0], :overlap, :],
+						costMapLeft)
+			cheapVertCut(costMapLeft, pathCostsLeft)
+			combineRefAndChosen(pathCostsLeft, refPatchLeft, chosenPatch, 0, overlap)
 
 		if blockUp:
 			# chosenSize = min(colNo*tileSize + patchSize, textureWidth) - colNo*tileSize
 			# TODO: stupid solution; find better one
-			makeCostMap(refPatchUp, chosenPatch[:overlap, :refPatchUp.shape[1], :], costMapUp, tid)
-			cheapHorizCut(costMapUp, pathCostsUp, tid)
-			combineRefAndChosen(pathCostsUp, refPatchUp, chosenPatch, 1, overlap, tid)
+			makeCostMap(refPatchUp, chosenPatch[:overlap, :refPatchUp.shape[1], :],
+						costMapUp)
+			cheapHorizCut(costMapUp, pathCostsUp)
+			combineRefAndChosen(pathCostsUp, refPatchUp, chosenPatch, 1, overlap)
 
 		if blockLeft and blockUp:
-
 			for i in range(overlap):
 				for j in range(overlap):
-					# bitwise or operation
+					# bitwise or
 					pathMaskBoth[i,j] = 1 - ((1-pathCostsUp[i,j]) * (1-pathCostsLeft[i,j]))
 
 			pathCostsLeft[:overlap,:] = pathMaskBoth
 			pathCostsUp[:,:overlap] = pathMaskBoth
 
-			combineRefAndChosen(pathCostsLeft, refPatchLeft, chosenPatch, 0, overlap, tid)
-			combineRefAndChosen(pathCostsUp, refPatchUp, chosenPatch, 1, overlap, tid)
+			combineRefAndChosen(pathCostsLeft, refPatchLeft, chosenPatch, 0, overlap)
+			combineRefAndChosen(pathCostsUp, refPatchUp, chosenPatch, 1, overlap)
 
-		insert(texture, chosenPatch, rowNo*tileSize, colNo*tileSize, tid)
+		insert(texture, chosenPatch, rowNo*tileSize, colNo*tileSize)
 
 # TODO: is this really necessary? just use python min in nogil
 cdef inline int int_min(int a, int b) nogil: 
@@ -138,7 +146,6 @@ Returns 1-D array of distances over all patches.
 # TODO: need distances
 cdef void overlapDistances(FLOAT[:,:,:] refPatch,
 					   FLOAT[:,:,:,:] patches,
-					   FLOAT[:,:,:,:] distances,
 					   FLOAT[:] results) nogil:
 	cdef:
 		int numPatches = patches.shape[0]
@@ -156,10 +163,7 @@ cdef void combineRefAndChosen(INT[:,:] pathMask,
 						FLOAT[:,:,:] refPatch, 
 						FLOAT[:,:,:] chosenPatch, 
 						int dir,
-						int overlap, int tid) nogil:
-	with gil:
-		print "started combining ref and chosen for thread %i" % tid
-
+						int overlap) nogil:
 	# dir: 0 for left, 1 for up
 	if dir == 0:
 		for i in range(refPatch.shape[0]):
@@ -173,9 +177,6 @@ cdef void combineRefAndChosen(INT[:,:] pathMask,
 				# use refPatch if 1; chosenPatch if 0
 				if pathMask[i][j] == 1:
 					chosenPatch[i][j] = refPatch[i][j]
-
-	with gil:
-		print "finished combining ref and chosen for thread %i" % tid
 
 
 # TODO: cythonize all helper functions
@@ -204,14 +205,11 @@ def makePatches(img, patchSize):
 
 	return patches
 
-
-cdef int getMatchingPatch(FLOAT[:] distances, float thresholdFactor, int tid) nogil:
-	'''
+'''
 	Given a 1-D array of patch distances, choose matching patch index that is within threshold.
-	'''
-	with gil:
-		print "started finding matching patch for thread %i" % tid
+'''
 
+cdef int getMatchingPatch(FLOAT[:] distances, float thresholdFactor) nogil:
 	cdef:
 		FLOAT[:] d = distances
 		int numPatches = distances.shape[0]
@@ -238,9 +236,6 @@ cdef int getMatchingPatch(FLOAT[:] distances, float thresholdFactor, int tid) no
 			# return i
 			ctr += 1
 
-	# with gil:
-	# 	print "counter = number of qualifying indices: %i" % ctr
-
 	cdef:
 		int* indices = <int *> malloc(ctr * sizeof(int))
 		int temp = ctr
@@ -261,18 +256,12 @@ cdef int getMatchingPatch(FLOAT[:] distances, float thresholdFactor, int tid) no
 
 	free(indices)
 
-	with gil:
-		print "finished finding matching patch for thread %i" % tid
-
 	return patchIdx
 
 '''
 This function inserts a patch into img at position (i,j).
 '''
-cpdef void insert(FLOAT[:,:,:] target, FLOAT[:,:,:] patch, int i, int j, int tid) nogil:
-	with gil:
-		print "started inserting for thread %i" % tid
-
+cpdef void insert(FLOAT[:,:,:] target, FLOAT[:,:,:] patch, int i, int j) nogil:
 	cdef:
 		int patchSize = patch.shape[0]
 		int x = target.shape[1]
@@ -283,16 +272,10 @@ cpdef void insert(FLOAT[:,:,:] target, FLOAT[:,:,:] patch, int i, int j, int tid
 	patchH = int_min(j+patchSize, x) - j
 	target[i:int_min(i+patchSize, y), j:int_min(j+patchSize, x), :] = patch[:patchV, :patchH, :]
 
-	with gil:
-		print "finished inserting for thread %i" % tid
-
 '''
 This function takes in 2 overlapping image regions, computes pixel-wise L2 norm and returns cost map.
 '''
-cdef void makeCostMap(FLOAT[:,:,:] img1, FLOAT[:,:,:] img2, FLOAT[:,:] costMap, int tid) nogil:
-	with gil:
-		print "started making costmap for thread %i" % tid
-
+cdef void makeCostMap(FLOAT[:,:,:] img1, FLOAT[:,:,:] img2, FLOAT[:,:] costMap) nogil:
 	cdef:
 		int i,j
 
@@ -302,8 +285,6 @@ cdef void makeCostMap(FLOAT[:,:,:] img1, FLOAT[:,:,:] img2, FLOAT[:,:] costMap, 
 				costMap[i,j] = sqrt((img1[i,j,0] - img2[i,j,0])**2 + 
 					(img1[i,j,1] - img2[i,j,1])**2 + (img1[i,j,2] - img2[i,j,2])**2)
 
-	with gil:
-		print "finished making costmap for thread %i" % tid
 
 '''
 DP this shit, yo
@@ -377,10 +358,7 @@ cdef void cheapVertPath(FLOAT[:,:] costMap, INT[:,:] pathCosts) nogil:
 '''
 Generate binary mask
 '''
-cdef void cheapVertCut(FLOAT[:,:] costMap, INT[:,:] pathCosts, int tid) nogil:
-	with gil:
-		print "started cheap vert cut for thread %i" % tid
-
+cdef void cheapVertCut(FLOAT[:,:] costMap, INT[:,:] pathCosts) nogil:
 	cdef:
 		int row
 		int x = pathCosts.shape[1]
@@ -396,13 +374,6 @@ cdef void cheapVertCut(FLOAT[:,:] costMap, INT[:,:] pathCosts, int tid) nogil:
 				pathCosts[row, col] = 1
 			else:
 				break
-
-	with gil:
-		print "finished cheap vert cut for thread %i" % tid
-
-# TODO oh god taking a transpose in C...
-# cdef void cheapHorizCut(FLOAT[:,:] costMap, INT[:,:] pathCosts) nogil:
-# 	cheapVertCut(costMap.T, pathCosts.T)
 
 
 '''
@@ -477,10 +448,7 @@ cdef void cheapHorizPath(FLOAT[:,:] costMap, INT[:,:] pathCosts) nogil:
 '''
 Generate binary mask
 '''
-cdef void cheapHorizCut(FLOAT[:,:] costMap, INT[:,:] pathCosts, int tid) nogil:
-	with gil:
-		print "started cheap horiz cut for thread %i" % tid
-
+cdef void cheapHorizCut(FLOAT[:,:] costMap, INT[:,:] pathCosts) nogil:
 	cdef:
 		int row
 		int x = pathCosts.shape[0]
@@ -496,27 +464,4 @@ cdef void cheapHorizCut(FLOAT[:,:] costMap, INT[:,:] pathCosts, int tid) nogil:
 				pathCosts[row, col] = 1
 			else:
 				break
-
-	with gil:
-		print "finished cheap horiz cut for thread %i" % tid
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 

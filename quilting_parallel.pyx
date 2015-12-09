@@ -86,21 +86,21 @@ cpdef void paste_patch(int texture_width, int texture_height, int tile_size,
 		# find reference patchs and calculate overlap distances over all sample patches
 		if block_left:
 			ref_patch_left = texture[row_off:int_min(row_off + patch_size, texture_height), 
-								   col_off:int_min(col_off + overlap, texture_width), :]
+									 col_off:int_min(col_off + overlap, texture_width), :]
 			overlap_distances(ref_patch_left, patches, dist_left)
 			# alias to be used if patch bordered on two sides
 			d = dist_left
 
 		if block_up:
 			ref_patch_up = texture[row_off:int_min(row_off + overlap, texture_height), 
-								 col_off:int_min(col_off + patch_size, texture_width), :]
+								   col_off:int_min(col_off + patch_size, texture_width), :]
 			overlap_distances(ref_patch_up, patches, dist_up)
 			# alias to be used if patch bordered on two sides
 			d = dist_up
 
 		if block_left and block_up:
 			ref_patch_both = texture[row_off:int_min(row_off + overlap, texture_height), 
-							col_off:int_min(col_off + overlap, texture_width), :]
+									 col_off:int_min(col_off + overlap, texture_width), :]
 			overlap_distances(ref_patch_both, patches, dist_both)
 			# correct for overcounting in dist_both
 			for i in range(num_patches):

@@ -1,3 +1,16 @@
+'''
+Driver for serial Cython impementation of the Efros-Freeman image quilting algorithm
+
+Authors:
+Aidi Zhang
+Samuel Cheng
+
+Harvard CS205, fall 2015
+Course Head: Prof. Thouis (Ray) Jones
+Teaching Fellow: Kevin Chen
+
+'''
+
 import sys
 import os.path
 sys.path.append(os.path.join('..', 'util'))
@@ -7,143 +20,124 @@ from PIL import Image
 import pyximport
 pyximport.install(setup_args={"include_dirs":np.get_include()}, reload_support=True)
 
-from quilting_serial_cython import *
+import random
 
-# TODO: look at Liang paper
+from quilting_parallel import *
+
 
 if __name__ == "__main__":
 	# read in original image using Python Image Library (PIL)
-	orig_img = Image.open("basket.png")
+	image_name = "pebbles"
+	orig_img = Image.open(image_name + ".png")
 	(width, height) = orig_img.size
 
 	# extract list of pixels in RGB/grayscale format
 	pixels = list(orig_img.getdata())
 	sample_2d = np.array(pixels, np.int32)
-	sample_2d = sample_2d.reshape((height,-1,3))
+	sample_2d = sample_2d.reshape((height, -1, 3))
 
-	# ensure that img is either an RGB or grayscale image
-	assert sample_2d.ndim == 3 and (sample_2d.shape[2] == 3 or sample_2d.shape[2] == 1), sample_2d.shape
+	# ensure that img is an RGB image
+	assert sample_2d.ndim == 3 and sample_2d.shape[2] == 3, sample_2d.shape
 
-	# choose patch from input sample by slicing
-	patchSize = 30
-	sl = (slice(0,patchSize), slice(0,patchSize), slice(0,3))
+	# manually set patch_size
+	patch_size = 30
 
 	# generate all sample patches
-	patches = makePatches(sample_2d, patchSize)
+	patches = make_patches(sample_2d, patch_size)
+	num_patches = patches.shape[0]
 
-	# TODO: randomly select initial patch
-	initialPatch = np.zeros((patchSize, patchSize, 3), dtype=np.float32)
-	initialPatch[:,:,:] = patches[0,:,:,:]
+	# randomly select initial patch
+	initial_patch = np.zeros((patch_size, patch_size, 3), dtype=np.float32)
+	rand_patch = random.randint(0, num_patches - 1)
+	initial_patch[:,:,:] = patches[rand_patch,:,:,:]
 
-	# define textureSize, tileSize and initialize blank canvas
-	textureSize = (width * 2, height * 2)
-	overlap = patchSize / 6
-	tileSize = patchSize - overlap
-	texture = np.zeros((textureSize[1], textureSize[0], 3), dtype=np.float32)
-	textureWidth = textureSize[0]
-	textureHeight = textureSize[1]
-
-	numPatches = patches.shape[0]
-
-	# paste all patches: paste includes 1) selecting from candidate patches, 2) calculating min error boundary
-	# and 3) inserting patches into output texture
-	# TODO: think about whether it should return or remain as void function
-	# insert(texture, initialPatch, 0, 0, 0)
+	# define texture_size, tile_size and initialize blank canvas
+	texture_size = (width * 2, height * 2)
+	texture_width = texture_size[0]
+	texture_height = texture_size[1]
+	overlap = patch_size / 6
+	tile_size = patch_size - overlap
+	texture = np.zeros((texture_height, texture_width, 3), dtype=np.float32)
 	
-	N = int(math.ceil(textureSize[0]/float(tileSize)))
-	M = int(math.ceil(textureSize[1]/float(tileSize)))
+	# dimensions of patch grid needed to generated texture
+	N = int(math.ceil(texture_width / float(tile_size)))
+	M = int(math.ceil(texture_height / float(tile_size)))
 
-	tid = -1
-
-	for rowNo in range(M): # height M
-		for colNo in range(N): # width N
+	# insert patches to target
+	k = -1
+	for row_no in range(M):
+		for col_no in range(N):
 			d = np.zeros(patches.shape[0], dtype=np.float32)
-			distLeft = np.zeros(patches.shape[0], dtype=np.float32)
-			distUp = np.zeros(patches.shape[0], dtype=np.float32)
-			distBoth = np.zeros(patches.shape[0], dtype=np.float32)
-			# TODO: double?
+			dist_left = np.zeros(patches.shape[0], dtype=np.float32)
+			dist_up = np.zeros(patches.shape[0], dtype=np.float32)
+			dist_both = np.zeros(patches.shape[0], dtype=np.float32)
 			distances = np.empty_like(patches, dtype=np.float32)
-			pathCostsLeft = np.zeros((tileSize, overlap), dtype=np.int32)
-			pathCostsUp = np.zeros((overlap, tileSize), dtype=np.int32)
-			# refPatchUp.shape[0], refPatchLeft.shape[1]
-			pathMaskBoth = np.zeros((overlap, overlap), dtype=np.int32)
+			path_costs_left = np.zeros((patch_size, overlap), dtype=np.int32)
+			path_costs_up = np.zeros((overlap, patch_size), dtype=np.int32)
+			cost_map_left = np.zeros((patch_size, overlap), dtype=np.float32)
+			cost_map_up = np.zeros((overlap, patch_size), dtype=np.float32)
 
-			costMapLeft = np.zeros((tileSize, overlap), dtype=np.float32)
-			costMapUp = np.zeros((overlap, tileSize), dtype=np.float32)
+			k += 1
 
-			tid += 1
-
-			print "On iteration %i" % tid
+			# set offset in row and column, measured in pixels
+			row_off = row_no * tile_size
+			col_off = col_no * tile_size
 
 			# insert default initial top-left patch
-			if tid == 0:
-				insert(texture, initialPatch, rowNo, colNo, tid)
+			if k == 0:
+				insert(texture, initial_patch, row_off, col_off)
 				continue
 
-			blockLeft = 1 if colNo>0 else 0
-			blockUp = 1 if rowNo>0 else 0
+			block_left = 1 if col_no > 0 else 0
+			block_up = 1 if row_no > 0 else 0
 			
 			# find reference patchs and calculate overlap distances over all sample patches
-			if blockLeft:
+			if block_left:
 				# TODO does using python min affect performance enough?
-				refPatchLeft = texture[rowNo*tileSize:min(rowNo*tileSize + patchSize, textureHeight), 
-								colNo*tileSize:min(colNo*tileSize + overlap, textureWidth), :]
-				overlapDistances(refPatchLeft, patches, distances, distLeft)
-				# reference or actual copy if d = distLeft + distUp - distBoth didn't work
-				d = distLeft
+				ref_patch_left = texture[row_off:min(row_off + patch_size, texture_height), 
+										 col_off:min(col_off + overlap, texture_width), :]
+				overlap_distances(ref_patch_left, patches, distances, dist_left)
+				# reference or actual copy if d = dist_left + dist_up - dist_both didn't work
+				d = dist_left
 
-			if blockUp:
-				refPatchUp = texture[rowNo*tileSize:min(rowNo*tileSize + overlap, textureHeight), 
-								colNo*tileSize:min(colNo*tileSize + patchSize, textureWidth), :]
-				overlapDistances(refPatchUp, patches, distances, distUp)
-				d = distUp
+			if block_up:
+				ref_patch_up = texture[row_off:min(row_off + overlap, texture_height), 
+									   col_off:min(col_off + patch_size, texture_width), :]
+				overlap_distances(ref_patch_up, patches, distances, dist_up)
+				d = dist_up
 
-			if blockLeft and blockUp:
-				refPatchBoth = texture[rowNo*tileSize:min(rowNo*tileSize + overlap, textureHeight), 
-								colNo*tileSize:min(colNo*tileSize + overlap, textureWidth), :]
-				overlapDistances(refPatchBoth, patches, distances, distBoth)
-				# cythonized version of: d = distLeft + distUp - distBoth
-				for i in range(numPatches):
-					d[i] = distLeft[i] + distUp[i] - distBoth[i]
+			if block_left and block_up:
+				ref_patch_both = texture[row_off:min(row_off + overlap, texture_height), 
+										 col_off:min(col_off + overlap, texture_width), :]
+				overlap_distances(ref_patch_both, patches, distances, dist_both)
+				for i in range(num_patches):
+					d[i] = dist_left[i] + dist_up[i] - dist_both[i]
+
+			threshold_factor = 1.1
 
 			# finds appropriate random patch
-			chosenIdx = getMatchingPatch(d, 1.1, tid)
-			chosenPatch = patches[chosenIdx, :, :, :]
+			chosen_idx = get_matching_patch(d, threshold_factor)
+			chosen_patch = patches[chosen_idx, :, :, :]
 
 			# determines minimum cut boundary and overlays onto chosen patch
-			if blockLeft:
-				makeCostMap(refPatchLeft, chosenPatch[:refPatchLeft.shape[0], :overlap, :], costMapLeft, tid)
-				cheapVertCut(costMapLeft, pathCostsLeft, tid)
-				# TODO: fix?
-				combineRefAndChosen(pathCostsLeft, refPatchLeft, chosenPatch, 0, overlap, tid)
+			if block_left:
+				make_cost_map(ref_patch_left, chosen_patch[:ref_patch_left.shape[0], :overlap, :], cost_map_left)
+				cheap_vert_cut(cost_map_left, path_costs_left)
+				combine_ref_chosen(path_costs_left, ref_patch_left, chosen_patch)
 
-			if blockUp:
-				# chosenSize = min(colNo*tileSize + patchSize, textureWidth) - colNo*tileSize
-				# TODO: stupid solution; find better one
-				makeCostMap(refPatchUp, chosenPatch[:overlap, :refPatchUp.shape[1], :], costMapUp, tid)
-				cheapHorizCut(costMapUp, pathCostsUp, tid)
-				combineRefAndChosen(pathCostsUp, refPatchUp, chosenPatch, 1, overlap, tid)
+			if block_up:
+				make_cost_map(ref_patch_up, chosen_patch[:overlap, :ref_patch_up.shape[1], :], cost_map_up)
+				cheap_horiz_cut(cost_map_up, path_costs_up)
+				combine_ref_chosen(path_costs_up, ref_patch_up, chosen_patch)
 
-			if blockLeft and blockUp:
-
-				for i in range(overlap):
-					for j in range(overlap):
-						# bitwise or operation
-						pathMaskBoth[i,j] = 1 - ((1-pathCostsUp[i,j]) * (1-pathCostsLeft[i,j]))
-
-				pathCostsLeft[:overlap,:] = pathMaskBoth
-				pathCostsUp[:,:overlap] = pathMaskBoth
-
-				combineRefAndChosen(pathCostsLeft, refPatchLeft, chosenPatch, 0, overlap, tid)
-				combineRefAndChosen(pathCostsUp, refPatchUp, chosenPatch, 1, overlap, tid)
-
-			insert(texture, chosenPatch, rowNo*tileSize, colNo*tileSize, tid)
-
+			insert(texture, chosen_patch, row_off, col_off)
+			print "Finished patch %i" % k
 
 	# convert texture into flattened array pixels_out for exporting as PNG
-	pixels_out = np.reshape(texture, (textureSize[0] * textureSize[1], 3), order='C')
-	pixels_out = map(lambda x: (x[0],x[1],x[2]), pixels_out)
-	img_out = Image.new(orig_img.mode, textureSize)
+	pixels_out = np.reshape(texture, (texture_width * texture_height, 3), order='C')
+	pixels_out = map(lambda x: (x[0], x[1], x[2]), pixels_out)
+	img_out = Image.new(orig_img.mode, texture_size)
 	img_out.putdata(pixels_out)
+	img_out.save(image_name + "_generated_" + str(patch_size) + ".png", "png")
 	img_out.show()
-	print "donedonedone!\n"
+	print "\nDone!\n"

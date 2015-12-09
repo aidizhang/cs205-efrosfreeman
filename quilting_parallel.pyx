@@ -24,6 +24,7 @@ ctypedef np.float32_t FLOAT
 ctypedef np.int32_t INT
 
 # TODO: should make contiguous memory?
+# TODO: haven't handled incorrect paths for pieces on the edge
 
 
 '''

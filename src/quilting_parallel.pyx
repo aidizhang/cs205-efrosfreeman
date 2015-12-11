@@ -32,7 +32,7 @@ paste_patch(texture_width, texture_height, tile_size, overlap,
 		2) calculate min error boundary
 		3) patches into output texture
 '''
-cpdef void paste_patch(int texture_width, int texture_height, int tile_size,
+cpdef int paste_patch(int texture_width, int texture_height, int tile_size,
 					  int overlap, int num_rows, int num_cols, int tid,
 					  FLOAT[:,:,:] np_texture, FLOAT[:,:,:,:] patches,
 					  FLOAT[:,:,:] initial_patch):
@@ -122,6 +122,8 @@ cpdef void paste_patch(int texture_width, int texture_height, int tile_size,
 			combine_ref_chosen(path_costs_up, ref_patch_up, chosen_patch)
 
 		insert(texture, chosen_patch, row_off, col_off)
+
+	return 0
 
 '''
 int_min(a, b)
@@ -257,7 +259,7 @@ cdef int get_matching_patch(FLOAT[:] distances, float threshold_factor) nogil:
 insert(target, patch, i, j)
 	copies patch into target at pixel position (i,j).
 '''
-cpdef void insert(FLOAT[:,:,:] target, FLOAT[:,:,:] patch, int i, int j) nogil:
+cpdef int insert(FLOAT[:,:,:] target, FLOAT[:,:,:] patch, int i, int j) nogil:
 	cdef:
 		int patch_size = patch.shape[0]
 		int x = target.shape[1]
@@ -267,6 +269,8 @@ cpdef void insert(FLOAT[:,:,:] target, FLOAT[:,:,:] patch, int i, int j) nogil:
 	patchV = int_min(i + patch_size, y) - i
 	patchH = int_min(j + patch_size, x) - j
 	target[i:int_min(i + patch_size, y), j:int_min(j + patch_size, x), :] = patch[:patchV, :patchH, :]
+
+	return 0
 
 
 '''

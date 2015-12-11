@@ -23,8 +23,6 @@ from libc.stdlib cimport rand, malloc, free
 ctypedef np.float32_t FLOAT
 ctypedef np.int32_t INT
 
-# TODO: should make contiguous memory?
-
 
 '''
 int_min(a, b)
@@ -39,7 +37,7 @@ overlap_distances(ref_patch, patches, results)
 	computes the L2 norm distance of ref_patch to each patch in patches
 	stores total distance of each patch in results
 '''
-cpdef void overlap_distances(FLOAT[:,:,:] ref_patch,
+cpdef int overlap_distances(FLOAT[:,:,:] ref_patch,
 					   FLOAT[:,:,:,:] patches,
 					   FLOAT[:] results) nogil:
 	cdef:
@@ -55,6 +53,7 @@ cpdef void overlap_distances(FLOAT[:,:,:] ref_patch,
 				results[i] += sqrt((patches[i, j, k, 0] - ref_patch[j, k, 0])**2 + \
 								   (patches[i, j, k, 1] - ref_patch[j, k, 1])**2 + \
 								   (patches[i, j, k, 2] - ref_patch[j, k, 2])**2)
+	return 0
 
 
 '''
@@ -62,7 +61,7 @@ combine_ref_chosen(path_mask, ref_patch, chosen_patch)
 	using path_mask, copies pixels from ref_patch to chosen_path
 	direction of iteration depends on dir: 0 for vertical overlap, 1 for horizontal
 '''
-cpdef void combine_ref_chosen(INT[:,:] path_mask, 
+cpdef int combine_ref_chosen(INT[:,:] path_mask, 
 						FLOAT[:,:,:] ref_patch, 
 						FLOAT[:,:,:] chosen_patch) nogil:
 	cdef:
@@ -74,6 +73,7 @@ cpdef void combine_ref_chosen(INT[:,:] path_mask,
 			# use ref_patch if 1; chosen_patch if 0
 			if path_mask[i][j] == 1:
 				chosen_patch[i][j] = ref_patch[i][j]
+	return 0
 
 
 '''
@@ -160,7 +160,7 @@ cpdef int get_matching_patch(FLOAT[:] distances, float threshold_factor) nogil:
 insert(target, patch, i, j)
 	copies patch into target at pixel position (i,j).
 '''
-cpdef void insert(FLOAT[:,:,:] target, FLOAT[:,:,:] patch, int i, int j) nogil:
+cpdef int insert(FLOAT[:,:,:] target, FLOAT[:,:,:] patch, int i, int j) nogil:
 	cdef:
 		int patch_size = patch.shape[0]
 		int x = target.shape[1]
@@ -171,13 +171,15 @@ cpdef void insert(FLOAT[:,:,:] target, FLOAT[:,:,:] patch, int i, int j) nogil:
 	patchH = int_min(j + patch_size, x) - j
 	target[i:int_min(i + patch_size, y), j:int_min(j + patch_size, x), :] = patch[:patchV, :patchH, :]
 
+	return 0
+
 
 '''
 make_cost_map(img1, img2, cost_map)
 	computes error pixel-wise by L2 norm and stores in cost_map
 	img1 and img2 should have the same shape, and have 3 channels (RGB)
 '''
-cpdef void make_cost_map(FLOAT[:,:,:] img1, FLOAT[:,:,:] img2, FLOAT[:,:] cost_map) nogil:
+cpdef int make_cost_map(FLOAT[:,:,:] img1, FLOAT[:,:,:] img2, FLOAT[:,:] cost_map) nogil:
 	cdef:
 		int i,j
 		int height = int_min(img1.shape[0], img2.shape[0])
@@ -192,6 +194,8 @@ cpdef void make_cost_map(FLOAT[:,:,:] img1, FLOAT[:,:,:] img2, FLOAT[:,:] cost_m
 				cost_map[i, j] = sqrt((img1[i, j, 0] - img2[i, j, 0])**2 + \
 									 (img1[i, j, 1] - img2[i, j, 1])**2 + \
 									 (img1[i, j, 2] - img2[i, j, 2])**2)
+
+	return 0
 
 
 '''
@@ -277,7 +281,7 @@ cheap_vert_cut(cost_map, path_costs)
 	creates a binary mask by setting everything to the left of the path
 	to 1, signifying that those should be pixels from the existing texture
 '''
-cpdef void cheap_vert_cut(FLOAT[:,:] cost_map, INT[:,:] path_costs) nogil:
+cpdef int cheap_vert_cut(FLOAT[:,:] cost_map, INT[:,:] path_costs) nogil:
 	cdef:
 		int row
 		int x = path_costs.shape[1]
@@ -293,6 +297,7 @@ cpdef void cheap_vert_cut(FLOAT[:,:] cost_map, INT[:,:] path_costs) nogil:
 				path_costs[row, col] = 1
 			else:
 				break
+	return 0
 
 
 '''
@@ -360,7 +365,7 @@ cdef void cheap_horiz_path(FLOAT[:,:] cost_map, INT[:,:] path_costs) nogil:
 cheap_horiz_cut(cost_map, path_costs)
 	same as vertical version, transposed
 '''
-cpdef void cheap_horiz_cut(FLOAT[:,:] cost_map, INT[:,:] path_costs) nogil:
+cpdef int cheap_horiz_cut(FLOAT[:,:] cost_map, INT[:,:] path_costs) nogil:
 	cdef:
 		int row
 		int x = path_costs.shape[1]
@@ -374,4 +379,5 @@ cpdef void cheap_horiz_cut(FLOAT[:,:] cost_map, INT[:,:] path_costs) nogil:
 				path_costs[col, row] = 1
 			else:
 				break
+	return 0
 
